@@ -604,9 +604,11 @@
     return /minimax/i.test(String(model || ''));
   }
 
-  function fishEmotion() {
-    var e = '';
-    try { e = (window.Avatar && Avatar._emotion) || ''; } catch (err) { e = ''; }
+  /* Fish takes an emotion tag alongside the text. The caller knows the current
+     face (it just set it), so it is passed in — the transport layer must not
+     read renderer state. */
+  function fishEmotion(emotion) {
+    var e = String(emotion || '');
     var map = {
       happy: 'happy', laughing: 'happy', tease: 'surprised',
       shy: 'calm', cuddle: 'calm', sad: 'sad', crying: 'sad',
@@ -1140,15 +1142,16 @@
     /* Resolves to a Blob URL. Returns null when voice is disabled.
        provider: 'openai' (chat/completions + audio, MiMo-style),
        'qwen' (DashScope-compatible TTS), or 'fish' (Fish Audio Open API
-       POST /speech/tts, binary audio). `mode` is the talk mode. */
-    speak: function (text, lang, mode) {
+       POST /speech/tts, binary audio). `mode` is the talk mode; `emotion` is
+       the face currently on screen (Fish tags its delivery with it). */
+    speak: function (text, lang, mode, emotion) {
       var tts = Config.section('tts');
       if (tts.mode === 'off') return Promise.resolve(null);
       mode = mode || (Config.section('state') || {}).mode || 'chat';
       /* Per-provider credentials: qwen has its own baseUrl/apiKey so a MiMo
          setup can never leak into a DashScope call (or back). */
       if ((tts.provider || 'openai') === 'qwen') return Api._qwenSpeak(text, lang, mode);
-      if (tts.provider === 'fish') return Api._fishSpeak(text, lang, mode);
+      if (tts.provider === 'fish') return Api._fishSpeak(text, lang, mode, emotion);
       if (!tts.apiKey) return Promise.reject(new Error('NO_KEY'));
 
       var audio = { format: tts.format || 'wav' };
@@ -1240,7 +1243,7 @@
     },
 
     /* ------------------------------------------- Fish Audio Open API TTS */
-    _fishSpeak: function (text, lang, mode) {
+    _fishSpeak: function (text, lang, mode, emotion) {
       var tts = Config.section('tts');
       if (!tts.fishApiKey) return Promise.reject(new Error('NO_KEY'));
       function synth(voice) {
@@ -1262,7 +1265,7 @@
           if (style) body.instruction = style;
         }
         if (fishWantsEmotion(model)) {
-          var emo = fishEmotion();
+          var emo = fishEmotion(emotion);
           if (emo) body.emotion = emo;
         }
         return requestAudio(localProxy(fishTtsUrl(tts.fishBaseUrl)), body, tts.fishApiKey, 180000);

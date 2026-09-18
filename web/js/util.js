@@ -51,6 +51,34 @@
       return h.slice(8) + h.slice(0, 8);
     },
 
+    /* ------------------------------------------------------ time-of-day bands
+       The official client's bands are the hour ranges 5/11/17/20. This is the
+       ONE place that knows them: World (scene suffix + `tod.*` i18n keys),
+       Alarm (voice table) and the clock all derive from here, so a tweak to a
+       band boundary can no longer drift between modules. Canonical tokens are
+       the scene vocabulary (`tod.mor/aft/eve/ngt`) because they are also what
+       gets stored in state and looked up in i18n; the alarm voice table uses
+       long names, and that mapping lives here too. */
+    TOD_START: { mor: 6, aft: 12, eve: 17, ngt: 21 },
+    TOD_VOICE: { mor: 'morning', aft: 'daytime', eve: 'evening', ngt: 'night' },
+
+    hourToTod: function (h) {
+      h = ((Number(h) % 24) + 24) % 24;
+      if (h < 5) return 'ngt';
+      if (h < 11) return 'mor';
+      if (h < 17) return 'aft';
+      if (h < 20) return 'eve';
+      return 'ngt';
+    },
+
+    todStartHour: function (tod) {
+      return Util.TOD_START[tod] != null ? Util.TOD_START[tod] : 12;
+    },
+
+    todForVoice: function (h) {
+      return Util.TOD_VOICE[Util.hourToTod(h)] || 'daytime';
+    },
+
     weighted: function (items, weightOf) {
       var sum = 0, i, r, w;
       if (!items || !items.length) return null;

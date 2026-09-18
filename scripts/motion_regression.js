@@ -848,7 +848,7 @@ console.log('\n' + passCount + ' skins + 5 invariant checks passed.');
     /* the shipped talk view keeps the opaque log panel at ~34% of the screen;
        the camera's plate clamp lets the window sink below the art by exactly
        that share (the panel hides the seam) — mirror it here */
-    Avatar._panelFrac = 0.34;
+    Avatar.setPanelFraction(0.34);
     Avatar._applySceneConstraints(S, S.sceneConfig);
     Avatar._cacheMidBind(S);
     Avatar._measureHeadLocal();

@@ -193,11 +193,31 @@
        Drives gaze bindings, torso weights and blink cadence. */
     _tension: 0,
 
-    /* ------------------------------------------------------------- setup */
+    /* ------------------------------------------------------------- setup
+       The renderer never reaches into the UI. Two things it needs from the
+       host are injected instead: a notice sink (for user-visible failures) and
+       a voice source (which analyser to read, and whether playback is running).
+       Both default to inert, so avatar.js still loads standalone in the
+       headless regressions. */
+    _notice: null,
+    _voiceSource: null,
+
+    setNotice: function (fn) {
+      Avatar._notice = (typeof fn === 'function') ? fn : null;
+    },
+
+    _notify: function (msg, isErr) {
+      try { if (Avatar._notice) Avatar._notice(msg, !!isErr); } catch (e) { /* notice must never break rendering */ }
+    },
+
+    setVoiceSource: function (fn) {
+      Avatar._voiceSource = (typeof fn === 'function') ? fn : null;
+    },
+
     init: function (onReady) {
       Avatar.host = makeHost('scene-canvas');
       if (!Avatar.host) {
-        App && App.toast('此浏览器不支持 WebGL，立绘无法显示', true);
+        Avatar._notify('此浏览器不支持 WebGL，立绘无法显示', true);
         return;
       }
       Avatar.scene = makeLayer(Avatar.host);
@@ -926,7 +946,7 @@
         gP.then(function (g) {
           Avatar.gesture = g;
           Avatar._loadSpine(L, s.skel, s.atlas, function (err) {
-            if (err) { App && App.toast(err.message, true); cb && cb(err); return; }
+            if (err) { Avatar._notify(err.message, true); cb && cb(err); return; }
             Avatar._loadedSkelId = s.id;
             Avatar._fxKey = '';
             Avatar._fxPick = null;
@@ -957,7 +977,7 @@
             cb && cb(null);
           });
         }).catch(function (e) {
-          App && App.toast('皮肤加载失败：' + e.message, true);
+          Avatar._notify('皮肤加载失败：' + e.message, true);
           cb && cb(e);
         });
       };
@@ -2144,9 +2164,13 @@
       });
     },
 
+    /* Live mic/playback level for lipsync. The analyser belongs to whatever
+       owns playback, so the host injects it (setVoiceSource) rather than the
+       renderer reaching into the UI each frame. */
     _voiceDb: function () {
-      var an = window.App && App._voiceAnalyser;
-      if (!an || !App.audio || App.audio.paused) return null;
+      var src = Avatar._voiceSource ? Avatar._voiceSource() : null;
+      var an = src && src.analyser;
+      if (!an || src.paused) return null;
       var buf = Avatar._fft || (Avatar._fft = new Uint8Array(an.fftSize));
       an.getByteTimeDomainData(buf);
       var sum = 0, i, v;
@@ -2387,6 +2411,22 @@
       var hit = document.getElementById('avatar-hit');
       if (hit) hit.style.pointerEvents = on ? 'none' : '';
     },
+
+    isHidden: function () { return !!Avatar._hideChara; },
+
+    /* The face currently on screen (the caller that set it can also read it
+       back without touching _emotion). */
+    currentEmotion: function () { return Avatar._emotion || ''; },
+
+    /* The bottom-panel fraction drives the camera window, so the renderer owns
+       the value; the UI only states how tall its panel is. Read/write through
+       these instead of assigning Avatar._panelFrac from outside. */
+    panelFraction: function () { return Avatar._panelFrac || 0; },
+    setPanelFraction: function (frac) { Avatar._panelFrac = Number(frac) || 0; },
+
+    /* CSS zoom between layout px and clientX (desktop #phone scaling). Public
+       alias: the pointer/click/dpr conversions all go through this one. */
+    cssZoom: function (el) { return Avatar._cssZoom(el); },
 
     /* ASMR ⇄ other modes flips the intensity band (weak). Re-apply the
        face/FFX/speed without interrupting the current pose. */

@@ -10,12 +10,11 @@
   var STYLES = ['normal', 'whisper'];
   var WEEK = ['日', '一', '二', '三', '四', '五', '六'];
 
+  /* Voice-table band name for an hour. The boundaries are NOT redeclared here:
+     Util.hourToTod owns them (shared with the scene bands), and Util.TOD_VOICE
+     maps the scene vocabulary to the long names this audio tree uses. */
   function todForHour(h) {
-    if (h < 5) return 'night';
-    if (h < 11) return 'morning';
-    if (h < 17) return 'daytime';
-    if (h < 20) return 'evening';
-    return 'night';
+    return Util.todForVoice(h);
   }
 
   var Alarm = {

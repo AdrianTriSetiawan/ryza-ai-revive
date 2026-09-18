@@ -72,7 +72,7 @@
     /* Desktop UI zoom. #phone now fills the window (no more letterbox), so a
        small window must scale the fixed-px chrome instead of letting it
        crowd/overflow. CSS zoom scales the whole layout as one; pointer math
-       divides it back out via Avatar._cssZoom, and the canvas backing store
+       divides it back out via Avatar.cssZoom, and the canvas backing store
        multiplies dpr by it (see avatar.js). Electron-only: phones keep zoom
        1 and rely on the fluid full-viewport layout. */
     /* How much of the screen the bottom log panel covers — the camera's
@@ -87,9 +87,9 @@
        (starts at −1064) with a 1693u gap; every other scene ships one
        full-coverage backdrop quad. */
     _syncPanelFrac: function () {
-      if (!window.Avatar || Avatar._panelFrac) return;   // measure once
+      if (!window.Avatar || Avatar.panelFraction()) return;   // measure once
       var vh = window.innerHeight || 1;
-      Avatar._panelFrac = Math.min(0.55, Math.min(340, Math.max(240, 0.34 * vh)) / vh);
+      Avatar.setPanelFraction(Math.min(0.55, Math.min(340, Math.max(240, 0.34 * vh)) / vh));
     },
 
     _fitUi: function () {
@@ -142,6 +142,18 @@
         Sound.setPlace(st.stage, st.tod, World.backgroundFor(st.stage));
         App._tickDay();
         App._syncPanelFrac();
+        /* Hand the renderer the two host capabilities it needs, so avatar.js
+           never reaches back into App (notice toasts, and which analyser to
+           read for lipsync). */
+        Avatar.setNotice(App.toast);
+        Avatar.setVoiceSource(function () {
+          return { analyser: App._voiceAnalyser, paused: !App.audio || App.audio.paused };
+        });
+        /* Memory summarises through this injected hook (memory.js then has no
+           reference to the transport layer). */
+        if (Memory.setLLM) {
+          Memory.setLLM(function (sys, body, opts) { return Api.complete(sys, body, opts); });
+        }
         Avatar.init(function () {
           App._loadSceneFor(st.stage, st.tod);
           App._tickTime();          // adopt the wall/flow clock once the scene is up
@@ -793,7 +805,7 @@
         var rect = ev.target.getBoundingClientRect();
         /* rect is in viewport px; layout px need the zoom divided out
            (identity when zoom is 1 — phones/browser). */
-        var z = (window.Avatar && Avatar._cssZoom) ? Avatar._cssZoom(ev.target) : 1;
+        var z = (window.Avatar && Avatar.cssZoom) ? Avatar.cssZoom(ev.target) : 1;
         var x = (ev.clientX - rect.left) / z, y = (ev.clientY - rect.top) / z;
         var part = Avatar.hitPartAt(x, y);
         if (!part) return;   /* miss = no ripple, no SE, no reaction */
@@ -1090,7 +1102,7 @@
     },
 
     _toggleChara: function () {
-      var on = !(Avatar && Avatar._hideChara);
+      var on = !(Avatar && Avatar.isHidden && Avatar.isHidden());
       if (Avatar && Avatar.setHidden) Avatar.setHidden(on);
       var ico = document.getElementById('ico-toggle-chara');
       if (ico) ico.src = on ? 'assets/icons/chara_show.svg' : 'assets/icons/chara_hide.svg';
@@ -1229,8 +1241,10 @@
       var prep = (ttsL !== replyL && Api.translate)
         ? Api.translate(text, ttsL) : Promise.resolve(text);
       prep.then(function (speakText) {
-        /* mode selects the per-mode TTS voice direction (ASMR whisper…) */
-        return Api.speak(speakText, ttsL, st.mode);
+        /* mode selects the per-mode TTS voice direction (ASMR whisper…);
+           the face on screen travels with the request (Fish tags delivery) */
+        return Api.speak(speakText, ttsL, st.mode,
+          emotion || (window.Avatar && Avatar.currentEmotion && Avatar.currentEmotion()) || '');
       }).then(function (url) {
         /* Talking starts when the audio actually exists — before that the
            mouth sat closed (RMS target 0) for the whole TTS latency, and a

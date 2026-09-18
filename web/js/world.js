@@ -98,15 +98,11 @@
     },
 
     /* ---------------------------------------------------------- time-of-day
-       Bands match the alarm voice table (alarm.js todForHour) so the scene,
-       the greeting voice and the light all agree on when 朝/昼/夕/夜 start. */
+       Band boundaries live in Util (Util.hourToTod) — the single source shared
+       with the alarm voice table, so the scene, the greeting voice and the
+       light can no longer disagree on when 朝/昼/夕/夜 start. */
     hourToTod: function (h) {
-      h = ((Number(h) % 24) + 24) % 24;
-      if (h < 5) return 'ngt';
-      if (h < 11) return 'mor';
-      if (h < 17) return 'aft';
-      if (h < 20) return 'eve';
-      return 'ngt';
+      return Util.hourToTod(h);
     },
     /* Official AppServerClock: scene.time_bucket is a FACT pushed TO marionette,
        never a command FROM it. Only the local 'flow' clock lets the LLM dial time. */
@@ -118,8 +114,7 @@
     /* representative hour at the start of a band — used when the LLM or the
        manual button SETS a band in flow mode and the game clock must snap */
     todStartHour: function (tod) {
-      return { mor: 6, aft: 12, eve: 17, ngt: 21 }[tod] != null
-        ? { mor: 6, aft: 12, eve: 17, ngt: 21 }[tod] : 12;
+      return Util.todStartHour(tod);
     },
     /* pure flow-clock advance: gameHour after `speed` in-game minutes pass per
        real minute, measured from gameClockAt to nowMs. speed=60 ⇒ 1 real min =
