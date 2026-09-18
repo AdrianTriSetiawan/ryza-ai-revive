@@ -2232,13 +2232,16 @@
 
     setEmotion: function (emotion, attitude, immediate) {
       var L = Avatar.avatar;
-      var names = ['neutral', 'happy', 'laughing', 'tease', 'shy',
-                   'cuddle', 'sad', 'crying', 'angry'];
-      var atts = ['agree', 'deny', 'question'];
-      /* Invalid / omitted fields keep the last face — parseTaggedReply uses
-         null for omit, and a missed tag must not reset to neutral/agree. */
-      if (names.indexOf(emotion) >= 0) Avatar._emotion = emotion;
-      if (atts.indexOf(attitude) >= 0) Avatar._attitude = attitude;
+      /* Validated against the vocabulary core owns (util.js). The literal that
+         used to be here was a second copy of api.js's list, so an emotion added
+         to the protocol side was silently rejected by the face — the two layers
+         cannot import each other, which is why the list is in core. If core is
+         absent, accept any non-empty name (the old behaviour for an unknown one
+         is the base face anyway), but never treat omit as a value. */
+      var names = (global.Util && global.Util.EMOTIONS) || null;
+      var atts = (global.Util && global.Util.ATTITUDES) || null;
+      if (emotion && (!names || names.indexOf(emotion) >= 0)) Avatar._emotion = emotion;
+      if (attitude && (!atts || atts.indexOf(attitude) >= 0)) Avatar._attitude = attitude;
       if (!L || !L.ready || !L.state) return;
 
       var st = L.state, data = L.data;

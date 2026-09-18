@@ -26,6 +26,7 @@ vm.createContext(sandbox);
 function load(f) {
   vm.runInContext(fs.readFileSync(path.join(WEB, 'js', f), 'utf8'), sandbox, { filename: f });
 }
+load('util.js');   // core: owns the emotion/attitude vocabulary api.js validates tags against
 load('nsfw.js');
 load('api.js');
 
@@ -34,6 +35,14 @@ ok(!!N && N.VARIANT === 'nsfw', 'Nsfw exported');
 ok(typeof N.detect !== 'function', 'no keyword detector');
 ok(typeof N.decide !== 'function', 'no keyword decide');
 ok(typeof N.promptSection !== 'function', 'policy is not duplicated in nsfw.js');
+
+/* One owner for the emotion vocabulary: api.js (io) and avatar.js (render)
+   cannot import each other, so core (util.js) holds it. Identity, not just
+   equality — a re-declared list with the same contents is the bug. */
+ok(sandbox.Api.EMOTIONS === sandbox.Util.EMOTIONS,
+   'api.js validates against core\'s emotion list (no second literal)');
+ok(sandbox.Api.ATTITUDES === sandbox.Util.ATTITUDES,
+   'api.js validates against core\'s attitude list');
 
 /* The renderer is a port now (nsfw/core must not reference avatar/render).
    Wiring it here is the same call app.js makes; before the port, nsfw.js read

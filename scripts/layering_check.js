@@ -271,13 +271,20 @@ if (!dViolations) console.log('  PASS 三端契约标记齐全');
 console.log('\n=== E. 版本字面量漂移 ===');
 const version = JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'version.json'), 'utf8')).version;
 let eViolations = 0;
+/* The pattern captures the version, so both spellings are covered:
+   `RyzaChat/1.2.16` (the three hosts' User-Agent) and `RyzaChat-1.2.16.apk`
+   (README / PROJECT.md). Comparing the whole match would only ever recognise
+   the slash form — which is how the hyphen form stayed a version behind. */
 const litRe = new RegExp(cfg.versionLiterals.pattern, 'g');
+const litOne = new RegExp(cfg.versionLiterals.pattern);
 cfg.versionLiterals.files.forEach(function (rel) {
   const p = path.join(ROOT, rel);
   if (!fs.existsSync(p)) return;
   const found = fs.readFileSync(p, 'utf8').match(litRe) || [];
   Array.from(new Set(found)).forEach(function (lit) {
-    if (lit !== 'RyzaChat/' + version) {
+    const m = litOne.exec(lit);
+    const num = m && m[1] ? m[1] : lit;
+    if (num !== version) {
       console.log('  ' + rel + ' 硬写 ' + lit + '，config/version.json 是 ' + version);
       eViolations++;
     }

@@ -89,10 +89,9 @@
     { i: 5, name: '遺跡の守卫像', area: 4 }, { i: 6, name: '星霜の竜', area: 5 }
   ];
 
-  function itemName(id) {
-    var base = (Game.ITEMS[id] && Game.ITEMS[id].name) || id;
-    return (window.I18n && I18n.tc) ? I18n.tc('item.' + id, base) : base;
-  }
+  /* Item naming/valuation belong to the module that owns the catalogue
+     (game.js). This file used to carry identical copies of both. */
+  function itemName(id) { return Game.itemName(id); }
 
   function nowQuest() { return Game.s.quest || null; }
   function setQuest(q) { Game.s.quest = q; Game.save(); Game.emit('quest'); }
@@ -596,7 +595,7 @@
     var m = /^stage_(\d\d)_/.exec(st.stage || 'stage_01_001_04');
     return m ? ('area_' + m[1]) : 'area_01';
   }
-  function itemValue(id) { return (Game.ITEMS[id] && Game.ITEMS[id].value) || 10; }
+  function itemValue(id) { return Game.itemValue(id); }
 
   /* ------------------------------------------------- welcome mission screen
      features/welcome_mission — five onboarding tiles on the shipped art. */

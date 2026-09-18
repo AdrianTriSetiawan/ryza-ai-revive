@@ -88,9 +88,7 @@
         case 'exp': Game.addExp(r.amount); msgs.push(rewardText(3)); break;
         case 'item':
           Game.addItem('you', r.id, r.n || 1);
-          var inm = (Game.ITEMS[r.id] || {}).name || r.id;
-          if (window.I18n && I18n.tc) inm = I18n.tc('item.' + r.id, inm);
-          msgs.push(inm + '×' + (r.n || 1));
+          msgs.push(Game.itemName(r.id) + '×' + (r.n || 1));
           break;
         case 'big':
           Game.addMoney(r.money); Game.addExp(r.exp); Game.refill();

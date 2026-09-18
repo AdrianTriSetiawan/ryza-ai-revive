@@ -1217,15 +1217,14 @@
   var I18n = {
     lang: 'zh',
     LANG_NAMES: LANG_NAMES,
-    LANGS: [
-      { id: 'zh', label: '简体中文' },
-      { id: 'zh-tw', label: '繁體中文' },
-      { id: 'ja', label: '日本語' },
-      { id: 'en', label: 'English' },
-      { id: 'hi', label: 'हिन्दी' },
-      { id: 'id', label: 'Indonesia' },
-      { id: 'pt-br', label: 'Português (Brasil)' }
-    ],
+    /* Derived, not a second list. Membership and order come from Langs.ALL minus
+       'auto' (this picker chooses the UI language, which cannot be automatic),
+       and the label is the language's own name from LANG_NAMES — the same table
+       that names languages in the prompt. The hand-written copy this replaces
+       had already diverged from it ('Indonesia' vs 'Bahasa Indonesia'). */
+    LANGS: Langs.ALL
+      .filter(function (x) { return x.v !== 'auto'; })
+      .map(function (x) { return { id: x.v, label: LANG_NAMES[x.v] || x.v }; }),
     setLang: function (l) { if (T[l]) I18n.lang = l; },
     t: function (key) {
       var d = T[I18n.lang] || T.zh;

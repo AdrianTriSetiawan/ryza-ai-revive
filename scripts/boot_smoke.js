@@ -349,6 +349,32 @@ for (const f of ['util.js', 'config.js', 'i18n.js', 'api.js', 'providers.js', 't
     await new Promise((r) => setTimeout(r, 0));
     ok(rejSettled, 'playSpeech settles when play() is rejected (autoplay policy)');
     audioEl._playResult = null;
+    /* ---- single owners (each of these replaced a duplicated literal) ---- */
+    /* Text speed: callers used to coerce to 28, which is not in the table. */
+    const sped = sandbox.Config.textSpeed();
+    ok(sandbox.Config.TEXT_SPEEDS.some((s2) => s2.v === sped),
+       'the resolved text speed is a real step of the one table');
+    /* Language picker: labels and membership derive from LANG_NAMES + Langs.ALL. */
+    ok(sandbox.I18n.LANGS.every((l) => sandbox.I18n.LANG_NAMES[l.id] === l.label),
+       'every language-picker label comes from the one name table');
+    ok(sandbox.I18n.LANGS.length === sandbox.Langs.ALL.length - 1 &&
+       !sandbox.I18n.LANGS.some((l) => l.id === 'auto'),
+       'the UI-language picker is Langs.ALL minus auto (one membership list)');
+    /* Effort picker: options and validation come from Api.EFFORT_UI, and every
+       level must have a label — a level added there without one would render
+       blank rather than fail. */
+    ok(sandbox.Api.EFFORT_UI.length > 0 &&
+       sandbox.Api.EFFORT_UI.every((v) =>
+         sandbox.I18n.t('settings.thinkingEffort.' + v) !== 'settings.thinkingEffort.' + v),
+       'every effort level in the registry has a settings label');
+    /* Item catalogue readers live with the catalogue. */
+    ok(typeof sandbox.Game.itemName === 'function' &&
+       typeof sandbox.Game.itemValue === 'function' &&
+       sandbox.Game.itemName('bottle') ===
+         sandbox.I18n.tc('item.bottle', '回復のボトル'),
+       'Game owns item naming (the bag list now localizes like every other line)');
+    ok(sandbox.Api.EMOTIONS === sandbox.Util.EMOTIONS,
+       'one emotion vocabulary (core), used by both the protocol and the face');
   } catch (e) {
     bad('runtime: ' + (e && e.stack || e));
   }

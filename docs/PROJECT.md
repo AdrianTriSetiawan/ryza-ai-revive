@@ -1,6 +1,6 @@
 # Architecture notes
 
-Ryza Chat is a local-first conversational client with a Spine 4.2 avatar. This note records the module boundaries of the source tree. Version is pinned in `config/version.json` (currently **1.2.15**).
+Ryza Chat is a local-first conversational client with a Spine 4.2 avatar. This note records the module boundaries of the source tree. Version is pinned in `config/version.json` (currently **1.2.16**).
 
 本地对话客户端的模块边界。版本以 `config/version.json` 为准。
 

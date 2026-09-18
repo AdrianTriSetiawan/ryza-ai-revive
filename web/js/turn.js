@@ -22,11 +22,14 @@
 
    Semantics (cancellation)
    ------------------------
-   An interruption must stop the in-flight TTS request too, not just the audio.
-   The mechanism is a cooperative epoch owned by api.js (Api.newTurn bumps it
-   and aborts the XHR); a reply that resolves after the bump is STALE and never
-   reaches the caller. `beginTurn` is the only place that starts a user turn, so
-   a retry fired twice can no longer land out of order (AUDIT 11.4-3).
+   An interruption cancels the pending reply, not just the audio: the epoch is
+   bumped (api.js aborts the in-flight XHR) and a reply that resolves after the
+   bump is STALE and never reaches the caller. `beginTurn` and `interrupt` are
+   both that exit. NOTE: the epoch covers the chat request only — an in-flight
+   *TTS* request is not aborted (Api.speak takes no signal), so an interrupt
+   during synthesis still pays for that request; the blob is discarded when it
+   arrives. Threading the signal into Api.speak/translate is a known follow-up,
+   not something this comment should claim.
 
    Ports are injected, so this module knows nothing about transport or
    rendering — same convention as avatar.setNotice / memory.setLLM /

@@ -82,18 +82,18 @@
       var effort = (window.Api && Api.normalizeEffort)
         ? Api.normalizeEffort(Config.section('llm').thinkingEffort)
         : (Config.section('llm').thinkingEffort || 'default');
+      /* The choice list and the validation come from the registry's own
+         vocabulary (Api.EFFORT_UI), not from a literal. The copy that used to
+         live here clamped any level added there back to 'default', so a new
+         level existed everywhere except in the picker. */
+      var effortChoices = Api.EFFORT_UI;
       if (effort === 'xhigh') effort = 'max';
-      if (['default', 'off', 'low', 'medium', 'high', 'max'].indexOf(effort) === -1) {
-        effort = 'default';
-      }
-      App._select(w, T('settings.thinkingEffort'), effort, [
-        { v: 'default', t: T('settings.thinkingEffort.default') },
-        { v: 'off', t: T('settings.thinkingEffort.off') },
-        { v: 'low', t: T('settings.thinkingEffort.low') },
-        { v: 'medium', t: T('settings.thinkingEffort.medium') },
-        { v: 'high', t: T('settings.thinkingEffort.high') },
-        { v: 'max', t: T('settings.thinkingEffort.max') }
-      ], function (v) { Config.set('llm.thinkingEffort', v); });
+      if (effortChoices.indexOf(effort) === -1) effort = 'default';
+      App._select(w, T('settings.thinkingEffort'), effort,
+        effortChoices.map(function (v) {
+          return { v: v, t: T('settings.thinkingEffort.' + v) };
+        }),
+        function (v) { Config.set('llm.thinkingEffort', v); });
       App._select(w, T('settings.thinkingStyle'), Config.section('llm').thinkingStyle || 'auto', [
         { v: 'auto', t: T('settings.thinkingStyle.auto') },
         { v: 'none', t: T('settings.thinkingStyle.none') },
@@ -307,7 +307,7 @@
       Config.TEXT_SPEEDS.forEach(function (o) {
         var b = document.createElement('button');
         b.type = 'button';
-        var cur = Number(Config.section('app').textSpeed) || 28;
+        var cur = Config.textSpeed();
         b.className = Math.abs(cur - o.v) < 3 ? 'on' : '';
         b.innerHTML = '<img alt="" src="assets/icons/' + o.icon + '.svg">';
         b.onclick = function () {

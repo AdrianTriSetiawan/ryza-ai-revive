@@ -79,6 +79,17 @@
       return Util.TOD_VOICE[Util.hourToTod(h)] || 'daytime';
     },
 
+    /* ------------------------------------------------- emotion vocabulary
+       What the avatar can show, as the tag protocol spells it. This is the ONE
+       owner: api.js both validates tags against it and lists it in the prompt,
+       and avatar.js validates setEmotion against it. Those two live in the io
+       and render layers, neither of which may import the other, so the list has
+       to sit in core — a second literal in avatar.js (as there used to be) meant
+       an emotion added to the protocol side was silently rejected by the face. */
+    EMOTIONS: ['neutral', 'happy', 'laughing', 'tease', 'shy',
+               'cuddle', 'sad', 'crying', 'angry'],
+    ATTITUDES: ['agree', 'deny', 'question'],
+
     weighted: function (items, weightOf) {
       var sum = 0, i, r, w;
       if (!items || !items.length) return null;

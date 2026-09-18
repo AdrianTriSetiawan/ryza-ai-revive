@@ -209,6 +209,18 @@
 
   var Config = {
     TEXT_SPEEDS: TEXT_SPEEDS,
+    /* The active text speed, resolved against the table above. Callers used to
+       write `|| 28` — a number that is not even in TEXT_SPEEDS — in four places,
+       so changing the table's steps left all four silently coercing to a value
+       the picker cannot select. Fallback and clamp target are the shipped
+       default entry, from the one table. */
+    textSpeed: function () {
+      var v = Number(data.app && data.app.textSpeed);
+      for (var i = 0; i < TEXT_SPEEDS.length; i++) {
+        if (TEXT_SPEEDS[i].v === v) return v;
+      }
+      return TEXT_SPEEDS[0].v;
+    },
     get: function () { return data; },
     section: function (name) { return data[name]; },
     set: function (path, value) {

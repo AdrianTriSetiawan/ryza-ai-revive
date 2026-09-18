@@ -3,9 +3,14 @@
 (function (global) {
   'use strict';
 
-  var EMOTIONS = ['neutral', 'happy', 'laughing', 'tease', 'shy',
-                  'cuddle', 'sad', 'crying', 'angry'];
-  var ATTITUDES = ['agree', 'deny', 'question'];
+  /* The emotion/attitude vocabulary lives in core (util.js) because this module
+     (io) and avatar.js (render) must agree on it and neither may import the
+     other. Resolved once at load — util.js is loaded first in every host and in
+     the regressions that exercise tag parsing; an empty list would fail those
+     assertions loudly rather than silently drop tags. */
+  var VOCAB = global.Util || {};
+  var EMOTIONS = VOCAB.EMOTIONS || [];
+  var ATTITUDES = VOCAB.ATTITUDES || [];
 
   /* Shipped DEFAULTS placeholders — never send these upstream (the server
      answers with a bare "unsupported model tts-model"); speak() rejects

@@ -1184,7 +1184,10 @@
         var row = document.createElement('div');
         row.className = 'inv-row';
         row.innerHTML = '<span class="inv-name"></span><span class="inv-n"></span>';
-        var name = (Game.ITEMS[it.id] && Game.ITEMS[it.id].name) || it.id;
+        /* Game.itemName, not the raw catalogue name: this list was the one place
+           that skipped localisation, so the same item read 「漂流WOOD」 here and
+           the translated name in the quest line beside it. */
+        var name = Game.itemName(it.id);
         row.querySelector('.inv-name').textContent = name;
         row.querySelector('.inv-n').textContent = '×' + (it.count || 1);
         row.onclick = function () {
@@ -1685,7 +1688,7 @@
       });
     },
     _cycleTextSpeed: function () {
-      var cur = Number(Config.section('app').textSpeed) || 28;
+      var cur = Config.textSpeed();
       var idx = 0;
       Config.TEXT_SPEEDS.forEach(function (o, i) { if (o.v === cur) idx = i; });
       var nxt = Config.TEXT_SPEEDS[(idx + 1) % Config.TEXT_SPEEDS.length];
@@ -1695,7 +1698,7 @@
     _syncSpeedBtn: function () {
       var b = document.getElementById('btn-speed');
       if (!b) return;
-      var cur = Number(Config.section('app').textSpeed) || 28;
+      var cur = Config.textSpeed();
       var label = { 30: '×1', 18: '×1.5', 12: '×2', 8: '×3' };
       b.textContent = label[cur] || (cur <= 10 ? '×3' : cur <= 15 ? '×2' : cur <= 24 ? '×1.5' : '×1');
     },
@@ -1752,7 +1755,7 @@
         b.classList.add('speaking');
       }
       if (vig) vig.classList.add('talk-glow');
-      var speed = Number(Config.section('app').textSpeed) || 28;
+      var speed = Config.textSpeed();
       var i = 0;
       (function step() {
         if (gen !== App._typeGen) return;
