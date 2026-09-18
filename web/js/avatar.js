@@ -2417,6 +2417,12 @@
     /* The face currently on screen (the caller that set it can also read it
        back without touching _emotion). */
     currentEmotion: function () { return Avatar._emotion || ''; },
+    currentAttitude: function () { return Avatar._attitude || ''; },
+    /* Both screen fields at once, for the protocol layer's tag line — it gets
+       this as an injected reader (Api.setScreenState) rather than reaching in. */
+    screenState: function () {
+      return { emotion: Avatar._emotion || '', attitude: Avatar._attitude || '' };
+    },
 
     /* The bottom-panel fraction drives the camera window, so the renderer owns
        the value; the UI only states how tall its panel is. Read/write through

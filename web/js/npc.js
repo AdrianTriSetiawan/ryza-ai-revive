@@ -78,8 +78,19 @@
     return fallback || id || '';
   }
 
-  /* Split a reply into speaker beats. A line that matches no speaker continues
-     the previous beat, so multi-line paragraphs survive. */
+  /* Split a reply into speaker beats.
+
+     An unprefixed line is Ryza's line — that is what the prompt in promptBlock()
+     promises the model, and the parser has to agree with the prompt or the
+     speaker is decided twice, differently. It used to continue the previous
+     beat instead, so after an NPC spoke, the model's unprefixed reply (which the
+     prompt invites it to write) was appended to the NPC's beat: labelled with the
+     islander's name on screen and, because spokenText keeps only `ryza` beats,
+     never synthesized at all — her actual answer was silently swallowed.
+
+     The prompt therefore requires the prefix on *every* line, including the
+     continuation lines of a multi-line speech, so a paragraph cannot be split
+     across speakers by accident. */
   function split(text) {
     var body = String(text == null ? '' : text);
     if (!body.trim()) return [];
@@ -107,8 +118,7 @@
         push('npc', id, nameOf(id, String(raw).trim()), line.replace(SPEAKER[2].re, ''));
         continue;
       }
-      if (!current) push('ryza', '', '', line);
-      else current.text += (current.text ? '\n' : '') + line;
+      push('ryza', '', '', line);
     }
     if (current) beats.push(current);
     return beats.filter(function (b) { return b.text.trim() !== ''; });
@@ -221,6 +231,7 @@
       L.push(Npc.frequency(opts.appCfg));
       L.push('この回に登場する場合だけ、行頭に「角色[ID]：」を付けて本人の台詞を書く（IDは上の一覧のまま）。');
       L.push('あなた自身（ライザ）の台詞は「莱莎：」、地の文は「旁白：」で始める。前置きのない行はライザの台詞として扱われる。');
+      L.push('行は必ず話者で始めること。台詞が複数行にわたる場合も、続きの行に同じ話者を付け直す（付け忘れるとライザの台詞として扱われる）。');
       L.push('NPCや旁白には表情・動作・音声のタグを付けない（それらの資源は存在しない）。一度に登場させるのは1人、多くても2人まで。');
       L.push('上の一覧に無い人物の設定を創作しない。名前と立場以上の細かい設定は渡されていない。');
       L.push('話題に挙がっただけの人物を、その場にいることにしない。');

@@ -48,6 +48,10 @@
   var _active = null;     /* { id, priority, ownerId, controller, signal, meta } */
   var _waiting = [];
   var _seq = 0;
+  /* Cancelled intent ids, so the abort settlement that follows a cancel does
+     not emit a second `end` for an utterance already reported as cancelled
+     (that duplicate re-armed the microphone cooldown twice). */
+  var _cancelled = {};
 
   function emit(ev) {
     _subs.slice().forEach(function (f) {
@@ -89,6 +93,7 @@
     if (!_active) return false;
     var a = _active;
     _active = null;
+    _cancelled[a.id] = true;
     try {
       if (a.controller) a.controller.abort(reason);
       else if (a.abortFallback) a.abortFallback();
@@ -99,8 +104,13 @@
 
   /* The queue advances through exactly one path, so "the active intent ended"
      and "the active intent was cancelled" cannot diverge — A7 in
-     scripts/voice_regression.js is the assertion that caught them diverging. */
+     scripts/voice_regression.js is the assertion that caught them diverging.
+     Re-entrancy: `finish` emits `end` before promoting, and a listener is
+     allowed to start something new from that event (proactive.js will). If it
+     did, the new intent is already playing and must not be replaced by a
+     queued one. */
   function promote() {
+    if (_active) return false;
     var next = _waiting.shift();
     if (next) { run(next); return true; }
     setState(IDLE);
@@ -108,6 +118,9 @@
   }
 
   function finish(id, reason) {
+    /* Already reported as cancelled: the player settling after the abort is
+       not a second end. */
+    if (_cancelled[id]) { delete _cancelled[id]; return; }
     if (_active && _active.id !== id) return;   /* superseded already */
     _active = null;
     emit({ type: 'end', reason: reason, intentId: id });
@@ -153,6 +166,17 @@
     });
   }
 
+  /* Start of a user turn: whatever she was saying (and everything queued
+     behind it) is superseded, and the caller gets the epoch to hand to
+     Api.chat. Returns null when no canceller was injected — callers then
+     just let Api allocate its own epoch. (It used to return a locally invented
+     1 in that case, which Api.chat would compare against its own 0 and judge
+     STALE, silently discarding the first reply.) */
+  function bumpEpoch(reason) {
+    _epoch = _cancelTurn ? _cancelTurn(reason) : null;
+    return _epoch;
+  }
+
   var Turn = {
     IDLE: IDLE, THINKING: THINKING, SPEAKING: SPEAKING,
 
@@ -181,8 +205,7 @@
        just let Api allocate its own epoch. */
     beginTurn: function (reason) {
       Turn.stopAll(reason || 'new-turn');
-      _epoch = _cancelTurn ? _cancelTurn(reason || 'new-turn')
-                           : (_epoch == null ? 1 : _epoch + 1);
+      _epoch = bumpEpoch(reason || 'new-turn');
       setState(THINKING);
       return _epoch;
     },
@@ -229,11 +252,18 @@
       return false;
     },
 
-    /* Cut the current utterance only; queued ones still play (airi's
-       `interrupt` vs `stopAll` distinction). */
+    /* Cut the current utterance; queued ones still play (airi's `interrupt` vs
+       `stopAll` distinction). It is also the architecture's single interrupt
+       exit, so it invalidates a reply still on the wire: bumping the epoch
+       aborts the in-flight XHR, which is what makes "she stops because you
+       started talking" true even while she is only *thinking*. Without this,
+       a caller that interrupts during THINKING (the stop button, vad.js's
+       onset) left the request running and the reply landed afterwards. */
     interrupt: function (reason) {
-      var had = cancelActive(reason || 'interrupt');
-      if (had) promote();
+      var why = reason || 'interrupt';
+      bumpEpoch(why);
+      var had = cancelActive(why);
+      promote();
       return had;
     },
 

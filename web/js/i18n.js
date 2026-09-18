@@ -1176,6 +1176,15 @@
     zh: 'Chinese', 'zh-tw': 'Chinese', ja: 'Japanese', en: 'English',
     hi: 'Auto', id: 'Auto', 'pt-br': 'Auto'
   };
+  /* BCP-47 tags for the speech recogniser. This is the single owner of the
+     mapping: web/js/voice.js used to keep its own copy which was missing `hi`,
+     `id` and `pt-br` — three of the seven UI languages silently listened for
+     Japanese. Any language added to ALL needs a tag here; the voice regression
+     asserts that, which is the check that would have caught the drift. */
+  var STT_TAGS = {
+    zh: 'zh-CN', 'zh-tw': 'zh-TW', ja: 'ja-JP', en: 'en-US',
+    hi: 'hi-IN', id: 'id-ID', 'pt-br': 'pt-BR'
+  };
   var Langs = {
     ui: function () { return (Config.section('app') || {}).lang || 'zh'; },
     voice: function () {
@@ -1192,6 +1201,10 @@
     },
     name: function (lg) { return LANG_NAMES[lg] || lg; },
     ttsLangType: function (lg) { return TTS_LANGS[lg] || 'Auto'; },
+    /* BCP-47 for the recogniser. Unknown codes pass through rather than
+       silently becoming Japanese. */
+    sttTag: function (lg) { return STT_TAGS[lg] || lg || 'ja-JP'; },
+    STT_TAGS: STT_TAGS,
     ALL: [
       { v: 'auto', k: 'lang.auto' },
       { v: 'zh', k: 'lang.zh' }, { v: 'zh-tw', k: 'lang.zh-tw' },

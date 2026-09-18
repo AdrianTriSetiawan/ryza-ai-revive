@@ -122,6 +122,14 @@
     } catch (e) { return false; }
   }
 
+  /* What is on screen now, injected by the host (app.js reads Avatar's public
+     getters). This used to read `window.Avatar._emotion` directly: a private
+     field of the render layer, reached through a qualified global with no
+     trailing dot — invisible to the boundary guard, and an io->render edge the
+     architecture forbids. Absent reader = the defaults below, so api.js still
+     loads alone (nsfw_intent_regression does exactly that). */
+  var _screenState = null;   /* fn() -> { emotion, attitude } */
+
   /* First-line machine prefix filled with what's already on screen, so a
      copy-paste with no edits is a valid no-op. Screen fields live here;
      bags / exp / money / quest / memory stay in trailing <state>. */
@@ -132,10 +140,10 @@
     var stage = 'stage_01_001_04';
     var tod = 'aft';
     try {
-      var av = window.Avatar;
-      if (av) {
-        if (av._emotion && EMOTIONS.indexOf(av._emotion) !== -1) emotion = av._emotion;
-        if (av._attitude && ATTITUDES.indexOf(av._attitude) !== -1) attitude = av._attitude;
+      var scr = _screenState && _screenState();
+      if (scr) {
+        if (scr.emotion && EMOTIONS.indexOf(scr.emotion) !== -1) emotion = scr.emotion;
+        if (scr.attitude && ATTITUDES.indexOf(scr.attitude) !== -1) attitude = scr.attitude;
       }
     } catch (e) {}
     try {
@@ -1022,6 +1030,9 @@
     mapEffort: mapEffort,
     EFFORT_UI: EFFORT_UI,
     setModelMeta: function (m) { _modelMeta = m || null; },
+    /* fn() -> { emotion, attitude } — the host supplies what is on screen, so
+       the protocol layer never reads the render layer. */
+    setScreenState: function (fn) { _screenState = (typeof fn === 'function') ? fn : null; },
     resolvedContext: function () { return resolvedContext(Config.section('llm')); },
     /* test seam: which calls get rewritten onto the same-origin /_proxy
        (nsfw_intent_regression asserts serve.py + ryza://app both route) */
@@ -1087,9 +1098,17 @@
       var llm = Config.section('llm');
       if (!llm.apiKey) return Promise.reject(new Error('NO_KEY'));
       opts = opts || {};
-      /* No epoch handed in? Then this call is its own turn (side-quest text,
-         boot greeting…) and still gets stale protection. */
-      var epoch = (opts.epoch != null) ? opts.epoch : Api.newTurn();
+      /* A side call (dynamically generated quest text, the settings "test LLM"
+         button) must not allocate an epoch. Allocating one aborted whatever the
+         player had in flight, and App.say's own handler treats the resulting
+         STALE as "superseded on purpose" and returns silently — so the player's
+         message disappeared with no answer, no toast and no retry. `standalone`
+         calls are neither tracked nor superseded.
+         No epoch and not standalone (a boot greeting, an alarm line)? Then this
+         call is its own turn and still gets stale protection. */
+      var standalone = opts.standalone === true;
+      var epoch = standalone ? null
+                : ((opts.epoch != null) ? opts.epoch : Api.newTurn());
       var st = Config.section('state');
       var outLang = opts.lang || Api.replyLang();
       var mem = '';
@@ -1122,11 +1141,11 @@
       };
       attachThinking(body, llm, _modelMeta && _modelMeta.id === llm.model ? _modelMeta : null);
       return request(localProxy(upstreamUrl(llm.baseUrl, '/chat/completions')),
-                     body, llm.apiKey, undefined, epoch).then(function (j) {
+                     body, llm.apiKey, undefined, epoch == null ? undefined : epoch).then(function (j) {
         /* Interrupted / superseded while the request was in flight: the reply
            must not reach the caller at all (no history push, no face change,
            no speech). */
-        if (Api.isStale(epoch)) throw staleError();
+        if (epoch != null && Api.isStale(epoch)) throw staleError();
         return parseTaggedReply(choiceText(j));
       });
     },

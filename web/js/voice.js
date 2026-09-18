@@ -24,11 +24,12 @@
 (function (global) {
   'use strict';
 
-  /* The recogniser wants a BCP-47 tag; the app's language slots are two-letter. */
-  var LANG_TAG = {
-    ja: 'ja-JP', zh: 'zh-CN', 'zh-tw': 'zh-TW', en: 'en-US', ko: 'ko-KR',
-    fr: 'fr-FR', es: 'es-ES', ru: 'ru-RU', de: 'de-DE', it: 'it-IT', pt: 'pt-BR'
-  };
+  /* The recogniser wants a BCP-47 tag. That mapping lives in i18n.js
+     (Langs.sttTag) because it is language metadata and this module already
+     receives the language through a port — a second copy here is how `hi`,
+     `id` and `pt-br` (three of the seven UI languages) ended up with no tag at
+     all, silently falling back to ja-JP. The lang port returns a ready tag. */
+  var DEFAULT_TAG = 'ja-JP';
 
   /* After she stops talking the microphone stays muted for a moment: the tail
      of her audio is still in the room (and in the recogniser's buffer) and would
@@ -83,7 +84,7 @@
     rec.interimResults = false;
     rec.maxAlternatives = 1;
     try {
-      rec.lang = LANG_TAG[(_lang && _lang()) || 'ja'] || 'ja-JP';
+      rec.lang = (_lang && _lang()) || DEFAULT_TAG;
     } catch (e) { /* some engines reject an unknown tag; the default is fine */ }
 
     rec.onresult = function (ev) {
@@ -176,6 +177,7 @@
 
     stop: function () {
       _want = false;
+      Voice._cancelBarge();
       try { if (_rec) _rec.stop(); } catch (e) { /* already stopped */ }
       Voice._emitState();
       return true;
@@ -183,12 +185,31 @@
 
     toggle: function () { return Voice.isListening() ? Voice.stop() : Voice.start(); },
 
+    /* She just said this: remember it as her own words so the recogniser
+       hearing them back is not mistaken for the player. This is the only feed
+       into echo.js from production code, and it is what makes the text-level
+       echo filter (echo.js: 20 s lookback, >= 0.88 similarity) actually do
+       something — the module was wired into the mic but nothing ever recorded
+       a line, so `looksLikeEcho` could only ever answer "no". */
+    noteAssistantSpeech: function (text) {
+      var t = String(text == null ? '' : text);
+      if (!t.trim()) return false;
+      if (!_echo || typeof _echo.remember !== 'function') return false;
+      try { _echo.remember(t, _now()); } catch (e) { return false; }
+      return true;
+    },
+
     /* She finished a line: keep the microphone deaf for a moment. App calls
        this from its Turn subscription — the turn layer must not know about
-       microphones, and this module must not know about turns. */
-    noteAssistantSpeechEnded: function () {
+       microphones, and this module must not know about turns.
+
+       The reason matters for one case: if she stopped *because the player
+       started talking* (`user-barge-in`), a cooldown would swallow the very
+       utterance that caused the interruption, so the words never reach the
+       model. Any other stop is her own tail audio and does need the guard. */
+    noteAssistantSpeechEnded: function (reason) {
       Voice._cancelBarge();
-      if (_want) armCooldown();
+      if (_want && reason !== 'user-barge-in') armCooldown();
       Voice._emitState();
     },
 
@@ -243,6 +264,7 @@
       };
     },
     _reset: function () {
+      Voice._cancelBarge();
       _rec = null; _want = false; _suppressedUntil = 0; _restarts = 0;
     }
   };

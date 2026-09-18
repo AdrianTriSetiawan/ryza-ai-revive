@@ -217,7 +217,7 @@ const sleep = () => new Promise((r) => setTimeout(r, 0));
   /* ---- B2: bumping the epoch while the reply is on the wire aborts it */
   let staleB2 = null;
   b1.catch((e) => { staleB2 = e; });
-  Api.newTurn('interrupt');                      // what Turn.cancelActive leads to
+  Api.newTurn('interrupt');
   await sleep();
   ok(staleB2 && staleB2.stale === true, 'B2 an interrupted reply rejects as STALE');
   ok(inflight() === 0, 'B2 nothing is left in flight after the abort');
@@ -242,6 +242,23 @@ const sleep = () => new Promise((r) => setTimeout(r, 0));
   ok(r4 && r4.text === 'げんき' && r4.emotion === 'happy',
      'B4 an uninterrupted reply parses (tag line consumed, text clean)');
 
+  /* ---- B5: a side call must not supersede the player's own reply. Quest text
+     generation and the settings "test LLM" button both go through Api.chat; when
+     they allocated an epoch they aborted whatever was in flight, and App.say's
+     handler treats STALE as "superseded on purpose" and returns quietly — the
+     player's message vanished with no answer, no toast and no retry. */
+  const eBeforeSide = Api.turnEpoch();
+  let sideStale = null;
+  const b5side = Api.chat([], 'そくてい', { standalone: true });
+  b5side.catch((e) => { sideStale = e; });
+  ok(Api.turnEpoch() === eBeforeSide, 'B5 a stand-alone call does not allocate an epoch');
+  flush(200, { choices: [{ message: { content: 'だいじょうぶ' } }] });
+  const r5 = await b5side;
+  ok(r5 && r5.text === 'だいじょうぶ' && !sideStale,
+     'B5 a stand-alone call resolves and is never judged stale');
+  /* ...and it is not tracked, so a later turn cannot abort it either. */
+  ok(inflight() === 0, 'B5 a stand-alone call leaves nothing tracked in flight');
+
   console.log('\n=== C. turn begin/end (what App.say does) ===');
   let cancelled = [];
   Turn.setTurnCanceller((reason) => { cancelled.push(reason); return Api.newTurn(reason); });
@@ -254,6 +271,48 @@ const sleep = () => new Promise((r) => setTimeout(r, 0));
   ok(eBegin === Api.turnEpoch(), 'C1 the epoch handed to Api.chat is the live one');
   Turn.finishTurn();
   ok(Turn.state() === Turn.IDLE, 'C2 finishTurn is the only way back to idle after a reply');
+
+  /* ---- C3: interrupt is the architecture's single stop exit, so it must also
+     invalidate a reply still on the wire — not just silence the audio. It used
+     to bump nothing: a caller interrupting during THINKING (the stop button, the
+     vad.js onset) left the request running and the reply landed and was spoken
+     after the player had asked for silence. */
+  const c3 = Api.chat([], 'とちゅうの へんじ', { epoch: Turn.beginTurn('say') });
+  let c3stale = null;
+  c3.catch((e) => { c3stale = e; });
+  const epochBeforeInterrupt = Api.turnEpoch();
+  Turn.interrupt('user-barge-in');
+  await sleep();
+  ok(Api.turnEpoch() > epochBeforeInterrupt, 'C3 interrupt advances the reply epoch');
+  ok(c3stale && c3stale.stale === true, 'C3 a reply in flight is discarded by an interrupt');
+  ok(inflight() === 0, 'C3 and its request is aborted, not merely ignored');
+
+  /* ---- C4: a cancelled intent must not report a second `end` when its player
+     settles after the abort — that duplicate re-armed the mic cooldown twice and
+     told listeners a line had finished that was already reported as cancelled. */
+  Turn.stopAll('reset');
+  const done = mkDeferred();
+  Turn.setPlayer(() => done.promise);
+  Turn.setSynth(() => Promise.resolve('blob:one'));
+  const evC4 = recorder();
+  Turn.speak('いちどだけ', {});
+  await sleep();
+  Turn.interrupt('cut');
+  await sleep();
+  const c4ends = evC4.filter((e) => e.type === 'end').length;
+  done.resolve();                        /* the aborted player settles late */
+  await sleep();
+  ok(c4ends === 0 && evC4.filter((e) => e.type === 'end').length === 0,
+     'C4 a cancelled intent emits cancel only, never a late duplicate end');
+
+  /* ---- C5: without a canceller the turn must hand back null rather than
+     inventing an epoch: a made-up 1 is compared against Api's own counter (0)
+     and the very first reply would be judged STALE and dropped. */
+  Turn.setTurnCanceller(null);
+  const eNoCancel = Turn.beginTurn('say');
+  ok(eNoCancel === null, 'C5 beginTurn returns null when no canceller is injected');
+  Turn.setTurnCanceller((reason) => Api.newTurn(reason));
+  Turn.stopAll('reset');
 
   console.log('\n=== D. failures do not wedge the turn ===');
   Turn.stopAll('reset');
@@ -371,7 +430,7 @@ const sleep = () => new Promise((r) => setTimeout(r, 0));
   Voice.setSpeaker(() => speakingNow);
   Voice.setSink((text) => heard.push(text));
   Voice.setNotice((code) => notices.push(code));
-  Voice.setLang(() => 'ja');
+  Voice.setLang(() => sandbox.Langs.sttTag('ja'));
   Voice._reset();
   Echo.reset();
 
@@ -379,7 +438,14 @@ const sleep = () => new Promise((r) => setTimeout(r, 0));
   ok(Voice.start() === true && Voice.isListening() === true, 'F5 the mic can be turned on');
   const rec = lastRec;
   ok(rec && rec.continuous === true && rec.lang === 'ja-JP',
-     'F5 configured continuous, with a BCP-47 tag mapped from the language slot');
+     'F5 configured continuous, with the BCP-47 tag the language slot resolves to');
+  /* Every language the UI can select must resolve to a tag. i18n.js owns that
+     mapping now; the copy that used to live in voice.js was missing `hi`, `id`
+     and `pt-br`, so three of the seven UI languages listened for Japanese. */
+  const langGaps = sandbox.Langs.ALL.map((l) => l.v).filter((v) => v !== 'auto')
+    .filter((v) => !sandbox.Langs.STT_TAGS[v]);
+  ok(langGaps.length === 0, 'F5 every selectable language has an STT tag' +
+     (langGaps.length ? ' (missing: ' + langGaps.join(', ') + ')' : ''));
 
   /* Her speech in the room beats everything else. */
   speakingNow = true;
@@ -396,10 +462,49 @@ const sleep = () => new Promise((r) => setTimeout(r, 0));
   ok(heard.length === 1 && heard[0] === 'もう いけるはず',
      'F7 after the cooldown a player line gets through');
 
-  /* The text-level guard catches what an echo canceller cannot. */
-  Echo.remember('さっき言ったことばを そのまま 繰り返すよ', now);
+  /* The text-level guard catches what an echo canceller cannot.
+     Fed through Voice.noteAssistantSpeech — the same call App makes from the
+     synthesis port — because the old form of this test called Echo.remember()
+     itself and so proved only that echo.js works, never that production ever
+     recorded a line. It did not: nothing called remember at all, so the filter
+     always answered "no". */
+  ok(Voice.noteAssistantSpeech('さっき言ったことばを そのまま 繰り返すよ') === true,
+     'F8 her own line is recorded through the module that hears the microphone');
   deliver(rec, 'さっき言ったことばを そのまま 繰り返すよ');
   ok(heard.length === 1, 'F8 a transcript identical to her own recent line is dropped');
+  /* ...and the filter is not a blanket suppressor: a genuinely different line
+     still gets through. */
+  deliver(rec, 'ぜんぜん ちがう ことばだよ');
+  ok(heard.length === 2, 'F8 a different line is still forwarded');
+
+  /* A barge-in must not arm the cooldown that would swallow the very utterance
+     which caused the interruption. */
+  Voice.noteAssistantSpeechEnded('user-barge-in');
+  ok(Voice.suppressedUntil() <= now, 'F8 a user barge-in does not deafen the microphone');
+  deliver(rec, 'わりこみで いった ことば');
+  ok(heard.length === 3, 'F8 the interrupting utterance reaches the app');
+  /* Any other stop does arm it (her own tail audio is still in the room). */
+  Voice.noteAssistantSpeechEnded('done');
+  ok(Voice.suppressedUntil() > now, 'F8 a normal stop still arms the cooldown');
+  Voice._reset();
+
+  /* A pending barge countdown must not survive the microphone being switched
+     off: it would otherwise cut her off with the mic closed. */
+  let bargeFired = 0;
+  speakingNow = true;
+  Voice.setBargeIn(() => { bargeFired++; });
+  Voice.start();
+  Voice.noteAssistantSpeechStarted();
+  now += Voice.FIRST_SENTENCE_MS + 1;
+  lastRec.onspeechstart();
+  ok(Voice._bargePending() === true, 'F8 the onset armed the confirmation window');
+  Voice.stop();
+  ok(Voice._bargePending() === false, 'F8 switching the mic off cancels a pending barge-in');
+  await new Promise((r) => setTimeout(r, Voice.BARGE_CONFIRM_MS + 80));
+  ok(bargeFired === 0, 'F8 and it never fires afterwards');
+  speakingNow = false;
+  Voice.setBargeIn(null);
+  Voice._reset();
 
   /* A recogniser that dies instantly, over and over, must give up, not spin. */
   notices.length = 0;
@@ -511,10 +616,29 @@ const sleep = () => new Promise((r) => setTimeout(r, 0));
      unk[0].name === 'nobody' && /はじめまして/.test(unk[0].text),
      'H5 an unknown speaker keeps the line but gets no id (nothing invented, nothing lost)');
 
-  /* H6: continuation lines belong to whoever spoke last. */
-  const cont = Npc.split('角色[tao]：一行目\n二行目\n三行目');
-  ok(cont.length === 1 && cont[0].text.split('\n').length === 3,
-     'H6 unprefixed lines continue the previous speaker');
+  /* H6: an unprefixed line is RYZA's line — the prompt promises exactly that
+     ("前置きのない行はライザの台詞として扱われる"), and the prompt requires the
+     prefix on every line of a multi-line speech so a paragraph cannot drift
+     across speakers. Before this, an unprefixed line continued the previous
+     beat: after an islander spoke, her answer was appended to HIS beat, shown
+     under his name, and never synthesized (spokenText keeps only `ryza`). */
+  const cont = Npc.split('角色[tao]：やあ、ライザ。\nおはよう、タオ先生！');
+  const c1 = cont[1] || {};
+  ok(cont.length === 2, 'H6 an unprefixed line after another speaker is its own beat');
+  ok(cont[0] && cont[0].speaker === 'npc' &&
+     c1.speaker === 'ryza' && /おはよう/.test(c1.text || ''),
+     'H6 and it is Ryza, not a continuation of the islander');
+  ok(Npc.spokenText(cont) === 'おはよう、タオ先生！',
+     'H6 and it is therefore spoken (the case that used to be swallowed)');
+  /* The prefix must be repeated on every line of a multi-line speech, so a
+     continued paragraph stays with its speaker. */
+  const multi = Npc.split('角色[tao]：一行目\n角色[tao]：二行目\n莱莎：わかった');
+  const m0 = multi[0] || {}, m1 = multi[1] || {}, m2 = multi[2] || {};
+  ok(multi.length === 3 && m0.speaker === 'npc' && m1.speaker === 'npc' &&
+     m2.speaker === 'ryza',
+     'H6 repeating the prefix keeps a multi-line speech with its speaker');
+  ok(/付け直す/.test(Npc.promptBlock({ stage: 'stage_01_002_01', day: 1 })),
+     'H6 the prompt states that rule, so prompt and parser agree');
 
   /* H7: candidates come from the world data, are ranked by closeness, and Ryza
      is never one of them. Being in the same AREA is enough to be a candidate —

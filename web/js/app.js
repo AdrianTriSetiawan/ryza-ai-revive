@@ -138,129 +138,15 @@
       App._bindOverlays();
       Game.on(function () { App.refreshHud(); App._syncOpenViews(); });
 
+      /* Ports first: they must not depend on the asset chain below succeeding. */
+      App._wirePorts();
+
       Promise.all([Config.hydrate(), World.init(), VoiceBank.load(), Sound.init()]).then(function () {
         Sound.setCatalog(Object.keys(World.scenes || {}));
         var st = Config.section('state');
         Sound.setPlace(st.stage, st.tod, World.backgroundFor(st.stage));
         App._tickDay();
         App._syncPanelFrac();
-        /* Hand the renderer the two host capabilities it needs, so avatar.js
-           never reaches back into App (notice toasts, and which analyser to
-           read for lipsync). */
-        Avatar.setNotice(App.toast);
-        Avatar.setVoiceSource(function () {
-          return { analyser: App._voiceAnalyser, paused: !App.audio || App.audio.paused };
-        });
-        /* Memory summarises through this injected hook (memory.js then has no
-           reference to the transport layer). */
-        if (Memory.setLLM) {
-          Memory.setLLM(function (sys, body, opts) { return Api.complete(sys, body, opts); });
-        }
-        /* Presentation ports for the feature modules. Gameplay states intent;
-           this one place decides how it sounds/looks, so quests / daily /
-           world / alarm never reference App, Sound or Fx themselves. */
-        if (World.setNotice) World.setNotice(App.toast);
-        if (Quests.setNotice) Quests.setNotice(App.toast);
-        if (Quests.setNavigator) Quests.setNavigator(function (view) { App.showView(view); });
-        if (Alarm.setEditor) Alarm.setEditor(function (id) { App._editAlarm(id); });
-        var celebrate = function () {
-          if (window.Sound) Sound.se('quest_clear');
-          if (window.Fx) Fx.burstConfetti();
-        };
-        if (Quests.setCelebrate) Quests.setCelebrate(celebrate);
-        if (Daily.setCelebrate) Daily.setCelebrate(celebrate);
-        if (Quests.setGenerator) {
-          Quests.setGenerator(function (history, body, opts) { return Api.chat(history, body, opts); });
-        }
-        if (Quests.setPresenter) {
-          Quests.setPresenter(function (res) {
-            if (!res) return;
-            if (res.sail) App._onSailed();
-            if (res.line) {
-              if (res.faint) App._showFaint();
-              else App.showBubble(res.line);
-              if (window.Sound) {
-                if (res.ok) Sound.se('quest_clear');
-                else if (!res.faint) Sound.se('touch_start');
-              }
-            }
-            App.refreshHud();
-          });
-        }
-        if (Daily.setPresenter) {
-          Daily.setPresenter(function (res) {
-            if (!res) return;
-            if (!res.ok) { App.toast(I18n.t('dl.already')); return; }
-            App.toast(I18n.t('dl.got') + res.text);
-            App.refreshHud();
-          });
-        }
-        /* Turn owns "who is speaking". It gets the three things only this layer
-           can supply: how to synthesize (language matrix + per-mode direction),
-           how to play (the <audio> element, abortable mid-utterance), and how to
-           cancel an in-flight reply (Api's epoch). */
-        if (window.Turn) {
-          Turn.setTurnCanceller(function (reason) { return Api.newTurn(reason); });
-          Turn.setSynth(function (text, meta) {
-            var st2 = Config.section('state');
-            var replyL = (window.Langs && Langs.llm) ? Langs.llm() : 'ja';
-            var ttsL = (window.Langs && Langs.tts) ? Langs.tts() : replyL;
-            var prep = (ttsL !== replyL && Api.translate)
-              ? Api.translate(text, ttsL) : Promise.resolve(text);
-            return prep.then(function (t) {
-              return Api.speak(t, ttsL, (meta && meta.mode) || st2.mode, (meta && meta.emotion) || '');
-            });
-          });
-          Turn.setPlayer(function (url, signal, meta) {
-            return App.playSpeech(url, signal, meta && meta.fx);
-          });
-          /* Synthesis failures surface here now that Turn owns the utterance
-             (the toast text is the same one speakThen used to emit). */
-          Turn.on(function (ev) {
-            if (ev.type !== 'error') return;
-            var msg = (ev.error && ev.error.message) || '';
-            App.toast(msg === 'NO_KEY' ? I18n.t('toast.needKey')
-                  : msg === 'NO_MODEL' ? I18n.t('toast.needModel')
-                  : I18n.t('toast.ttsFail') + msg, true);
-          });
-        }
-        /* Voice input. The microphone needs three things only this layer has:
-           whether she is speaking (Turn), whose words came back (Echo), and
-           where an accepted transcript goes — this layer decides between
-           filling the box and sending it. */
-        if (window.Voice) {
-          Voice.setEcho(window.Echo);
-          Voice.setSpeaker(function () { return !!(window.Turn && Turn.isSpeaking()); });
-          Voice.setLang(function () {
-            return (window.Langs && Langs.voice && Langs.voice())
-                || (window.Langs && Langs.llm && Langs.llm()) || 'ja';
-          });
-          Voice.setNotice(function (code, isErr) {
-            var c = String(code || '');
-            if (c === 'mic.denied' || c === 'mic.unsupported' || c === 'mic.unstable') {
-              App.toast(I18n.t(c), true);
-            } else {
-              App.toast(I18n.t('mic.failed') + c.replace(/^mic\.error:/, ''), !!isErr);
-            }
-          });
-          Voice.setSink(function (text) { App._onVoiceTranscript(text); });
-          /* Onset barge-in, off by default: the recogniser cannot tell her
-             voice from the player's, so on a setup without echo cancellation
-             she would cut herself off. App wires it only when the player asked
-             for it (settings → app.bargeIn). */
-          Voice.setBargeIn(null);
-          if (window.Turn) {
-            Turn.on(function (ev) {
-              /* She stopped: keep the microphone deaf for a moment (the tail of
-                 her audio is still in the room and in the recogniser buffer). */
-              if (ev.type === 'end' || ev.type === 'cancel') Voice.noteAssistantSpeechEnded();
-              if (ev.type === 'speak') Voice.noteAssistantSpeechStarted();
-              if (ev.type === 'state' || ev.type === 'end' || ev.type === 'cancel') App._syncMic();
-            });
-          }
-          App._syncBargeIn();
-        }
-        App._setupMic();
         Avatar.init(function () {
           App._loadSceneFor(st.stage, st.tod);
           App._tickTime();          // adopt the wall/flow clock once the scene is up
@@ -297,8 +183,162 @@
           } else App.enterGame(false);
         });
       }).catch(function (e) {
+        /* Recorded as well as shown: the whole boot chain is skipped after a
+           throw, and "asset index failed" was the only clue even when the real
+           cause was a wiring call. boot_smoke asserts this is null. */
+        App._bootError = e;
         App.toast('素材索引加载失败：' + e.message, true);
       });
+    },
+
+    /* Every cross-module port, in one place, wired synchronously before any
+       async work starts. These are plain closures: nothing here needs the asset
+       index. They used to sit inside the asset-loading .then, so a single throw
+       anywhere in that chain left the app looking alive with no TTS, no memory
+       and no quest ports — while the .catch reported it as an asset problem
+       (boot_smoke reproduced exactly that: a stub missing one method, and the
+       whole port block was silently skipped with the suite reporting ALL PASS). */
+    _wirePorts: function () {
+      /* Hand the renderer the two host capabilities it needs, so avatar.js
+         never reaches back into App (notice toasts, and which analyser to
+         read for lipsync). */
+      Avatar.setNotice(App.toast);
+      Avatar.setVoiceSource(function () {
+        return { analyser: App._voiceAnalyser, paused: !App.audio || App.audio.paused };
+      });
+      /* Memory summarises through this injected hook (memory.js then has no
+         reference to the transport layer). */
+      if (Memory.setLLM) {
+        Memory.setLLM(function (sys, body, opts) { return Api.complete(sys, body, opts); });
+      }
+      /* Two render-layer reads that used to be hidden inside core/io modules
+         (invisible to the boundary guard, which is why --strict stayed at 0):
+         nsfw decides the variant but must not know Avatar, and api fills the
+         tag line with the on-screen face without reading Avatar's privates. */
+      if (Nsfw.setSink) {
+        Nsfw.setSink(function (name) { Avatar.setAtlasVariant(name); });
+      }
+      if (Api.setScreenState) {
+        Api.setScreenState(function () {
+          return (Avatar.screenState && Avatar.screenState()) ||
+                 { emotion: '', attitude: '' };
+        });
+      }
+      /* Presentation ports for the feature modules. Gameplay states intent;
+         this one place decides how it sounds/looks, so quests / daily /
+         world / alarm never reference App, Sound or Fx themselves. */
+      if (World.setNotice) World.setNotice(App.toast);
+      if (Quests.setNotice) Quests.setNotice(App.toast);
+      if (Quests.setNavigator) Quests.setNavigator(function (view) { App.showView(view); });
+      if (Alarm.setEditor) Alarm.setEditor(function (id) { App._editAlarm(id); });
+      var celebrate = function () {
+        if (window.Sound) Sound.se('quest_clear');
+        if (window.Fx) Fx.burstConfetti();
+      };
+      if (Quests.setCelebrate) Quests.setCelebrate(celebrate);
+      if (Daily.setCelebrate) Daily.setCelebrate(celebrate);
+      if (Quests.setGenerator) {
+        Quests.setGenerator(function (history, body, opts) { return Api.chat(history, body, opts); });
+      }
+      if (Quests.setPresenter) {
+        Quests.setPresenter(function (res) {
+          if (!res) return;
+          if (res.sail) App._onSailed();
+          if (res.line) {
+            if (res.faint) App._showFaint();
+            else App.showBubble(res.line);
+            if (window.Sound) {
+              if (res.ok) Sound.se('quest_clear');
+              else if (!res.faint) Sound.se('touch_start');
+            }
+          }
+          App.refreshHud();
+        });
+      }
+      if (Daily.setPresenter) {
+        Daily.setPresenter(function (res) {
+          if (!res) return;
+          if (!res.ok) { App.toast(I18n.t('dl.already')); return; }
+          App.toast(I18n.t('dl.got') + res.text);
+          App.refreshHud();
+        });
+      }
+      /* Turn owns "who is speaking". It gets the three things only this layer
+         can supply: how to synthesize (language matrix + per-mode direction),
+         how to play (the <audio> element, abortable mid-utterance), and how to
+         cancel an in-flight reply (Api's epoch). */
+      if (window.Turn) {
+        Turn.setTurnCanceller(function (reason) { return Api.newTurn(reason); });
+        Turn.setSynth(function (text, meta) {
+          var st2 = Config.section('state');
+          var replyL = (window.Langs && Langs.llm) ? Langs.llm() : 'ja';
+          var ttsL = (window.Langs && Langs.tts) ? Langs.tts() : replyL;
+          var prep = (ttsL !== replyL && Api.translate)
+            ? Api.translate(text, ttsL) : Promise.resolve(text);
+          return prep.then(function (t) {
+            /* Record her own line as it is voiced, so the recogniser hearing
+               it come back through the microphone is recognised as echo and
+               not as the player (web/js/echo.js). This is the single funnel
+               every synthesized line passes through. */
+            if (window.Voice && Voice.noteAssistantSpeech) Voice.noteAssistantSpeech(t);
+            return Api.speak(t, ttsL, (meta && meta.mode) || st2.mode, (meta && meta.emotion) || '');
+          });
+        });
+        Turn.setPlayer(function (url, signal, meta) {
+          return App.playSpeech(url, signal, meta && meta.fx);
+        });
+        /* Synthesis failures surface here now that Turn owns the utterance
+           (the toast text is the same one speakThen used to emit). */
+        Turn.on(function (ev) {
+          if (ev.type !== 'error') return;
+          var msg = (ev.error && ev.error.message) || '';
+          App.toast(msg === 'NO_KEY' ? I18n.t('toast.needKey')
+                : msg === 'NO_MODEL' ? I18n.t('toast.needModel')
+                : I18n.t('toast.ttsFail') + msg, true);
+        });
+      }
+      /* Voice input. The microphone needs three things only this layer has:
+         whether she is speaking (Turn), whose words came back (Echo), and
+         where an accepted transcript goes — this layer decides between
+         filling the box and sending it. */
+      if (window.Voice) {
+        Voice.setEcho(window.Echo);
+        Voice.setSpeaker(function () { return !!(window.Turn && Turn.isSpeaking()); });
+        Voice.setLang(function () {
+          var lg = (window.Langs && Langs.voice && Langs.voice())
+              || (window.Langs && Langs.llm && Langs.llm()) || 'ja';
+          /* The recogniser wants BCP-47; i18n.js owns that mapping. */
+          return (window.Langs && Langs.sttTag) ? Langs.sttTag(lg) : lg;
+        });
+        Voice.setNotice(function (code, isErr) {
+          var c = String(code || '');
+          if (c === 'mic.denied' || c === 'mic.unsupported' || c === 'mic.unstable') {
+            App.toast(I18n.t(c), true);
+          } else {
+            App.toast(I18n.t('mic.failed') + c.replace(/^mic\.error:/, ''), !!isErr);
+          }
+        });
+        Voice.setSink(function (text) { App._onVoiceTranscript(text); });
+        /* Onset barge-in, off by default: the recogniser cannot tell her
+           voice from the player's, so on a setup without echo cancellation
+           she would cut herself off. App wires it only when the player asked
+           for it (settings → app.bargeIn). */
+        Voice.setBargeIn(null);
+        if (window.Turn) {
+          Turn.on(function (ev) {
+            /* She stopped: keep the microphone deaf for a moment (the tail of
+               her audio is still in the room and in the recogniser buffer).
+               The reason is passed through because a user barge-in must NOT
+               arm that cooldown — it would swallow the player's interruption
+               itself. */
+            if (ev.type === 'end' || ev.type === 'cancel') Voice.noteAssistantSpeechEnded(ev.reason);
+            if (ev.type === 'speak') Voice.noteAssistantSpeechStarted();
+            if (ev.type === 'state' || ev.type === 'end' || ev.type === 'cancel') App._syncMic();
+          });
+        }
+        App._syncBargeIn();
+      }
+      App._setupMic();
     },
 
     enterGame: function (fromOnboard) {
@@ -1366,6 +1406,9 @@
         nsfwSection: window.Nsfw ? Nsfw.screenFact() : ''
       })
         .then(function (reply) {
+          /* A reply that is no longer the current turn must not land at all —
+             not the history, not the game state, not the face. */
+          if (!App._turnCurrent(turnEpoch)) return;
           App.speaking = false;
           if (window.Turn && Turn.finishTurn) Turn.finishTurn();
           document.getElementById('btn-send').disabled = false;
@@ -1394,7 +1437,7 @@
             role: 'assistant',
             content: Api.formatHistoryReply(reply.text)
           });
-          App._sayReply(reply);
+          App._sayReply(reply, turnEpoch);
 
           /* Talk-quests advance once per turn — if the LLM already reported
              quest progress through <state>, don't double-count it here. */
@@ -1402,13 +1445,19 @@
           Quests.render(document.getElementById('quest-list'), {});
         })
         .catch(function (e) {
+          /* Superseded on purpose (interruption / a newer turn): there is
+             nothing to report and no retry to offer — surfacing it would look
+             like a failure for something the user asked for.
+             This check MUST come before the state resets below: it used to sit
+             after them, so an aborted reply cleared App.speaking, pushed Turn
+             back to idle and re-enabled the send button *while the newer turn
+             was still generating* — the UI claimed it was not thinking and
+             accepted a third overlapping send. */
+          if (e && e.stale) return;
+          if (!App._turnCurrent(turnEpoch)) return;
           App.speaking = false;
           if (window.Turn && Turn.finishTurn) Turn.finishTurn();
           document.getElementById('btn-send').disabled = false;
-          /* Superseded on purpose (interruption / a newer turn): there is
-             nothing to report and no retry to offer — surfacing it would look
-             like a failure for something the user asked for. */
-          if (e && e.stale) return;
           var bar = document.getElementById('retry-bar');
           if (bar && e.message !== 'NO_KEY') bar.classList.remove('hidden');
           App.toast(e.message === 'NO_KEY' ? I18n.t('toast.needKey')
@@ -1417,11 +1466,20 @@
         });
     },
 
+    /* Is the turn with this epoch still the one in charge? Null means there is
+       no turn layer (or no canceller was injected), so there is nothing to
+       compare against and the caller is treated as current. */
+    _turnCurrent: function (epoch) {
+      if (epoch == null) return true;
+      if (!window.Turn || !Turn.epoch) return true;
+      return Turn.epoch() === epoch;
+    },
+
     /* A reply can now carry more than one speaker (web/js/npc.js). Her lines are
        typed and spoken; another islander's lines are text only, and they wait
        until she has finished talking — otherwise the panel gets rewritten
        mid-sentence while her voice is still going. */
-    _sayReply: function (reply) {
+    _sayReply: function (reply, turnEpoch) {
       var beats = (window.Npc && Npc.split)
         ? Npc.split(reply.text)
         : [{ speaker: 'ryza', id: '', name: '', text: String(reply.text || '') }];
@@ -1440,6 +1498,13 @@
       };
 
       App.typeBubble(mine, function () {
+        /* The typewriter runs at the player's text speed, and the player can
+           send a new message while it is still going. Showing the line is fine
+           (it is what she said), but by the time it finishes this reply may no
+           longer be the current turn — and voicing it then speaks the
+           superseded line over the new one, with the new reply queued behind
+           it. */
+        if (!App._turnCurrent(turnEpoch)) return;
         if (mine) App.speakThen(mine, reply.emotion);
         if (!others.length) return;
         if (window.Turn && Turn.isSpeaking()) {
@@ -1493,17 +1558,25 @@
         function clean() {
           if (!a) return;
           a.removeEventListener('ended', settle);
+          a.removeEventListener('error', stop);
           if (signal) signal.removeEventListener('abort', stop);
         }
         function settle() { if (done) return; done = true; clean(); resolve(); }
         function stop() { App._stopAudio(url, 1600); settle(); }
         if (!a) { settle(); return; }
         a.addEventListener('ended', settle);
+        /* A failed load / decode fires `error`, not `ended`, and a rejected
+           play() (autoplay policy) never fires either. Without these two the
+           returned promise stayed pending forever: Turn stayed in SPEAKING, and
+           because Voice gates transcripts on Turn.isSpeaking() the microphone
+           would be deaf for the rest of the session — the one failure mode the
+           turn layer is not allowed to have. */
+        a.addEventListener('error', stop);
         if (signal) {
           if (signal.aborted) { stop(); return; }
           signal.addEventListener('abort', stop);
         }
-        App.playUrl(url, fx);
+        Promise.resolve(App.playUrl(url, fx)).catch(function () { stop(); });
       });
     },
 
@@ -1524,8 +1597,12 @@
       a.onended = function () { App._stopAudio(url, 1600); };
       Avatar.setTalking(true);
       App._bubbleKeep();         /* stay put while she talks */
-      a.play().catch(function () { Avatar.setTalking(false); });
+      var playing = a.play();
+      if (playing && typeof playing.catch === 'function') {
+        playing.catch(function () { Avatar.setTalking(false); });
+      }
       App.buzz();
+      return playing;            /* callers that need to know it failed use this */
     },
 
     _pauseVoice: function () {

@@ -467,7 +467,9 @@
       var llm = Config.section('llm');
       if (!llm.apiKey) { App.toast(I18n.t('toast.needKey'), true); return; }
       App.toast('测试中…');
-      Api.chat([], '短く一言、あいさつして。', { mode: 'chat', style: 'text' })
+      /* stand-alone: testing the endpoint must not supersede (and so silently
+         discard) a reply the player is waiting for. */
+      Api.chat([], '短く一言、あいさつして。', { mode: 'chat', style: 'text', standalone: true })
         .then(function (r) { App.toast('OK：' + r.text); })
         .catch(function (e) { App.toast('失败：' + e.message, true); });
     },

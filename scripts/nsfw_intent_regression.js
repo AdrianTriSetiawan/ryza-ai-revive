@@ -35,6 +35,14 @@ ok(typeof N.detect !== 'function', 'no keyword detector');
 ok(typeof N.decide !== 'function', 'no keyword decide');
 ok(typeof N.promptSection !== 'function', 'policy is not duplicated in nsfw.js');
 
+/* The renderer is a port now (nsfw/core must not reference avatar/render).
+   Wiring it here is the same call app.js makes; before the port, nsfw.js read
+   `global.Avatar` itself — an edge the boundary guard could not see. */
+N.setSink(function (name) { sandbox.Avatar.setAtlasVariant(name); });
+let sinkCalls = 0;
+const realSink = sandbox.Avatar.setAtlasVariant.bind(sandbox.Avatar);
+sandbox.Avatar.setAtlasVariant = function (name) { sinkCalls++; return realSink(name); };
+
 N.reset();
 ok(/着ている/.test(N.screenFact()), 'screenFact: dressed');
 N.onTurn({ nsfw: null });
@@ -50,6 +58,15 @@ N.onTurn({ nsfw: true });
 ok(N.active() === true, 'llm can initiate');
 N.reset();
 ok(N.active() === false && sandbox.Avatar._calls.pop() === 'default', 'reset → default');
+ok(sinkCalls >= 3, 'the injected sink is what performs the atlas switch');
+
+/* The port is the only path to the renderer: nsfw.js must not name Avatar at
+   all. This is the assertion that would have caught the original leak (a
+   core->render edge written as `global.Avatar`, which the layering guard could
+   not see because the reference has no trailing dot). */
+const nsfwSrc = fs.readFileSync(path.join(WEB, 'js', 'nsfw.js'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, ' ');
+ok(!/\bAvatar\b/.test(nsfwSrc), 'nsfw.js never names the renderer');
 
 const A = sandbox.Api;
 if (A && A.parseTaggedReply) {

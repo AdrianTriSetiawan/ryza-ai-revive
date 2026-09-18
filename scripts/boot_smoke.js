@@ -12,6 +12,14 @@ const ROOT = path.join(__dirname, '..');
 const WEB = path.join(ROOT, 'web');
 let failures = 0;
 const bad = (msg) => { failures++; console.log('  FAIL ' + msg); };
+
+/* The boot wiring runs inside an async chain, so a throw inside it becomes an
+   unhandled rejection: the app keeps looking alive while every port after the
+   throwing line is left unconnected — which is exactly how this suite reported
+   ALL PASS for as long as Avatar.setNotice was missing from the stub below. */
+process.on('unhandledRejection', (e) => {
+  bad('unhandled rejection during boot: ' + (e && e.stack ? e.stack : e));
+});
 const ok = (cond, name) => { if (cond) console.log('  PASS ' + name); else bad(name); };
 
 /* ids actually present in index.html */
@@ -34,8 +42,16 @@ function makeEl(id) {
     appendChild() {}, removeChild() {}, remove() {}, focus() {},
     querySelector(sel) { return makeEl(id + sel); },
     querySelectorAll() { return []; },
-    addEventListener() {},
-    play() { return Promise.resolve(); }, pause() {},
+    /* Listeners are recorded instead of dropped so the audio failure paths can
+       be driven from the test: an <audio> that fails to load fires `error` and
+       never `ended`, and that is exactly the case that used to wedge the turn. */
+    _ls: {},
+    addEventListener(t, f) { (this._ls[t] = this._ls[t] || []).push(f); },
+    removeEventListener(t, f) {
+      const a = this._ls[t] || []; const i = a.indexOf(f); if (i >= 0) a.splice(i, 1);
+    },
+    _fire(t) { (this._ls[t] || []).slice().forEach((f) => f({ type: t })); },
+    play() { return this._playResult || Promise.resolve(); }, pause() {},
     getBoundingClientRect() { return { width: 100, height: 100, left: 0, top: 0 }; },
     getContext() {
       /* swallow-all 2d context so fx.js can draw against nothing */
@@ -111,6 +127,7 @@ sandbox.requestAnimationFrame = () => 0;
 sandbox.cancelAnimationFrame = () => {};
 
 /* module stubs that would need real GL / network */
+const variantCalls = [];
 const Avatar = {
   _initCb: null,
   init(cb) { this._initCb = cb; setTimeout(cb, 0); },
@@ -119,7 +136,20 @@ const Avatar = {
   loadSkin(id, cb) { cb && cb(); }, postureKey() { return 'posture_sitting'; },
   supportsBothPostures() { return false; }, hitPartAt() { return null; },
   poke() { return null; }, outfitOf(id) { return String(id).replace(/_(01|99)$/, ''); },
-  setAtlasVariant() {}, variantPageUrls() { return []; }
+  setAtlasVariant(name) { variantCalls.push(name); }, variantPageUrls() { return []; },
+  /* The two ports avatar.js exposes as *consumers* (S1), plus the public getters
+     app.js reads. They must all exist: the boot chain calls Avatar.setNotice and
+     App._syncPanelFrac() unconditionally, and while setNotice was missing here
+     the chain threw at that line and every port after it — memory, quests, turn,
+     voice — was silently left unconnected while this suite reported ALL PASS.
+     `_bootError` below is the gate that now makes that impossible. */
+  setNotice() {}, setVoiceSource() {},
+  _panelFrac: 0,
+  panelFraction() { return this._panelFrac; },
+  setPanelFraction(f) { this._panelFrac = Number(f) || 0; },
+  isHidden() { return false; }, cssZoom() { return 1; },
+  currentEmotion() { return ''; }, currentAttitude() { return ''; },
+  screenState() { return { emotion: '', attitude: '' }; }
 };
 sandbox.Avatar = Avatar;
 sandbox.Onboarding = {
@@ -127,6 +157,12 @@ sandbox.Onboarding = {
   skip() {}, next() {}, prologueNext() {}, tutorialAdvance() { return false; }
 };
 sandbox.alert = () => {}; sandbox.confirm = () => true; sandbox.prompt = () => null;
+/* The window object itself has listeners and a size in a real browser; the boot
+   chain registers `resize` and `visibilitychange`, so they must exist here or
+   the chain dies part-way (which is what the _bootError gate below detects). */
+sandbox.addEventListener = () => {};
+sandbox.removeEventListener = () => {};
+sandbox.innerWidth = 420; sandbox.innerHeight = 860;
 
 vm.createContext(sandbox);
 const load = (f) => vm.runInContext(fs.readFileSync(path.join(WEB, 'js', f), 'utf8'),
@@ -144,6 +180,12 @@ for (const f of ['util.js', 'config.js', 'i18n.js', 'api.js', 'providers.js', 't
     await sandbox.App.init();
     await new Promise((r) => setTimeout(r, 50));   // let the init chain settle
     ok(true, 'App.init completed without throwing');
+    if (sandbox.App._bootError) {
+      bad('silent half-boot (the chain threw and the rest of the boot was skipped):\n' +
+          sandbox.App._bootError.stack);
+    } else {
+      ok(true, 'the asset-loading chain ran to the end');
+    }
 
     const g = sandbox.Game, q = g.s.quest;
     ok(!!q && q.no === 1, 'quest chain started (no=' + (q && q.no) + ')');
@@ -269,6 +311,44 @@ for (const f of ['util.js', 'config.js', 'i18n.js', 'api.js', 'providers.js', 't
     const genAfterStart = sandbox.App._typeGen;
     sandbox.App.typeBubble('abc', null);
     ok(sandbox.App._typeGen === genAfterStart + 1, 'second type chain bumps the gen token');
+
+    /* ---- the two render-layer ports (wired in App.init, asserted here) ---- */
+    ok(sandbox.Nsfw.onTurn({ nsfw: true }) === undefined && sandbox.Nsfw.active(),
+       'nsfw port: the tag still reaches the module');
+    ok(variantCalls.indexOf('nsfw') >= 0,
+       'nsfw port: the injected sink is what switches the atlas (core never names Avatar)');
+    sandbox.Nsfw.reset();
+    ok(variantCalls[variantCalls.length - 1] === 'default',
+       'nsfw port: reset routes through the same sink');
+
+    Avatar.screenState = () => ({ emotion: 'shy', attitude: 'deny' });
+    ok(/emotion:shy/.test(sandbox.Api.screenTagLine()) &&
+       /attitude:deny/.test(sandbox.Api.screenTagLine()),
+       'screen-state port: the tag line follows the on-screen face');
+    Avatar.screenState = () => ({ emotion: '', attitude: '' });
+    ok(/emotion:happy/.test(sandbox.Api.screenTagLine()),
+       'screen-state port: unknown values fall back to the fillable default');
+
+    /* ---- playback must always settle -------------------------------------
+       Turn stays in SPEAKING until its player promise resolves, and Voice
+       gates the microphone on Turn.isSpeaking(): a promise that never settles
+       means a permanently deaf microphone, not just a stuck line. A failed
+       load fires `error` (never `ended`), and a rejected play() fires nothing
+       at all — both must release the turn. */
+    const audioEl = sandbox.App.audio;
+    let errSettled = false;
+    sandbox.App.playSpeech('blob:err', null, null).then(() => { errSettled = true; });
+    await new Promise((r) => setTimeout(r, 0));
+    audioEl._fire('error');
+    await new Promise((r) => setTimeout(r, 0));
+    ok(errSettled, 'playSpeech settles when the audio element errors');
+
+    let rejSettled = false;
+    audioEl._playResult = Promise.reject(new Error('NotAllowedError'));
+    sandbox.App.playSpeech('blob:rej', null, null).then(() => { rejSettled = true; });
+    await new Promise((r) => setTimeout(r, 0));
+    ok(rejSettled, 'playSpeech settles when play() is rejected (autoplay policy)');
+    audioEl._playResult = null;
   } catch (e) {
     bad('runtime: ' + (e && e.stack || e));
   }

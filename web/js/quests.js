@@ -189,7 +189,7 @@
         'type は talk/explore/gather/craft/battle/shop のいずれか1つ。',
         'need は2〜5、cost は1〜5。',
         'title/desc/goal は ' + ((window.I18n && I18n.LANG_NAMES && window.Langs) ? (I18n.LANG_NAMES[Langs.llm()] || Langs.llm()) : '日本語') + 'で書くこと。'
-      ].join('\n'), { mode: 'chat', style: 'text' }).then(function (r) {
+      ].join('\n'), { mode: 'chat', style: 'text', standalone: true }).then(function (r) {
         var m = /\{[\s\S]*\}/.exec(r.text || '');
         if (!m) throw new Error('bad quest json');
         var j = JSON.parse(m[0]);

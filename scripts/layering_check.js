@@ -89,17 +89,54 @@ const plannedMissing = Object.keys(MODULES).filter(function (n) { return isPlann
 const edges = {};   /* from -> Set(to)   (actual, measured) */
 moduleNames.forEach(function (m) { edges[m] = new Set(); });
 
+/* A dependency can hide from the plain `Name.` shape in one specific way: the
+   qualified global with no trailing dot, taken as a value —
+   `var av = window.Avatar; av.setAtlasVariant(...)`. The alias call itself is
+   invisible, and `window.Avatar` has no dot after `Avatar`, so the old pattern
+   matched neither: two real violations (nsfw/core -> avatar/render,
+   api/io -> avatar/render) sat behind that gap while `--strict` reported 0.
+   An assignment target (`global.Name = ...`) is a definition, not a use. */
+function stripGlobalAssignments(src) {
+  return src.replace(/\b(?:window|global|globalThis|self)\s*\.\s*[A-Za-z_$][\w$]*\s*=(?!=)/g, ' ');
+}
+
 const refRe = {};
-Object.keys(ownerOf).forEach(function (g) { refRe[g] = new RegExp('\\b' + g + '\\s*\\.'); });
+Object.keys(ownerOf).forEach(function (g) {
+  refRe[g] = new RegExp(
+    '\\b' + g + '\\s*\\.' +
+    '|\\b(?:window|global|globalThis|self)\\s*\\.\\s*' + g + '\\b'
+  );
+});
 
 moduleNames.forEach(function (m) {
-  const src = stripComments(fs.readFileSync(fileOf(m), 'utf8'));
+  const src = stripGlobalAssignments(stripComments(fs.readFileSync(fileOf(m), 'utf8')));
   Object.keys(refRe).forEach(function (g) {
     const to = ownerOf[g];
     if (to === m) return;
     if (refRe[g].test(src)) edges[m].add(to);
   });
 });
+
+/* Guard-the-guard: the shape this detector reads is the whole point, and it was
+   silently narrow for as long as the two leaks existed. If a later edit narrows
+   it back, this fails loudly instead of reporting 0 violations again. */
+const refProbeBad = (function () {
+  const probe = refRe['Avatar'];
+  const mustMatch = ['var av = global.Avatar;', 'var av = window.Avatar;',
+                     'Avatar.setEmotion("shy");'];
+  const mustNotMatch = ['global.Avatar = {};', 'window.Turn = Turn;'];
+  const bad = [];
+  mustMatch.forEach(function (s) {
+    if (!probe.test(stripGlobalAssignments(s))) bad.push('missed: ' + s);
+  });
+  mustNotMatch.forEach(function (s) {
+    if (probe.test(stripGlobalAssignments(s))) bad.push('false positive: ' + s);
+  });
+  return bad;
+})();
+if (refProbeBad.length) {
+  refProbeBad.forEach(function (b) { report('A', '引用检测自检 ' + b); });
+}
 
 console.log('\n=== A. 层间引用 ===');
 let aViolations = 0;
@@ -124,7 +161,7 @@ moduleNames.forEach(function (m) {
     }
   });
 });
-if (!aViolations) console.log('  PASS 无越层引用');
+if (!aViolations && !problems.length) console.log('  PASS 无越层引用');
 
 /* ------------------------------------------------------- B: cycles */
 console.log('\n=== B. 循环依赖 ===');
@@ -249,9 +286,9 @@ cfg.versionLiterals.files.forEach(function (rel) {
 if (!eViolations) console.log('  PASS 版本字面量一致');
 
 /* --------------------------------------------------------------- summary */
-const total = aViolations + hard.length + cViolations + dViolations + eViolations;
+const total = aViolations + problems.length + hard.length + cViolations + dViolations + eViolations;
 console.log('\n--- 汇总 ---');
-console.log('  越层引用 ' + aViolations + ' | 未声明的硬环 ' + hard.length +
+console.log('  越层引用 ' + (aViolations + problems.length) + ' | 未声明的硬环 ' + hard.length +
             ' | core 未声明触达 ' + cViolations + ' | 三端契约 ' + dViolations +
             ' | 版本字面量 ' + eViolations);
 console.log('  不计入违规: 已声明环 ' + declared.length + ' 条、已声明 core 例外 ' + cDeclared +
