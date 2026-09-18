@@ -44,7 +44,7 @@
     "onboarding": "ui",
     "shell": "ui",
     "kbd": "ui",
-    "settings": { "layer": "ui", "planned": true }
+    "settings": "ui"
   },
   "allowCycles": [
     {
@@ -72,6 +72,7 @@
     "echo": ["Echo"],
     "voice": ["Voice"],
     "app": ["App"],
+    "settings": ["Settings"],
     "onboarding": ["Onboarding"],
     "shell": [],
     "kbd": []

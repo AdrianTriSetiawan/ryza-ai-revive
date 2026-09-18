@@ -196,7 +196,18 @@
     data.state.postureMigrated = true;
   }
 
+  /* Text-speed steps and their icons. Shared UI data: settings.js builds the
+     picker from it and app.js cycles through it from the ×N button, so it lives
+     with the other tables rather than inside either of them. */
+  var TEXT_SPEEDS = [
+    { v: 30, icon: 'text_speed_1x' },
+    { v: 18, icon: 'text_speed_15x' },
+    { v: 12, icon: 'text_speed_2x' },
+    { v: 8,  icon: 'text_speed_3x' }
+  ];
+
   var Config = {
+    TEXT_SPEEDS: TEXT_SPEEDS,
     get: function () { return data; },
     section: function (name) { return data[name]; },
     set: function (path, value) {
