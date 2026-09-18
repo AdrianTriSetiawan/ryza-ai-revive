@@ -1,0 +1,127 @@
+{
+  "_note": "模块分层与跨宿主契约的声明文件。scripts/layering_check.js 读它并与实际引用比对。改动代码前先冻结边界（P0）：默认只报告不阻断，加 --strict 才以非零码退出，等重构到位后再接进回归流程。",
+  "_why": "防止跨模块冲突：一是禁止越层/循环引用（尤其是 App 被 core 回引），二是逼出'core 层必须无 DOM/网络'这条可测的边界，三是把 /_proxy 三端契约与版本字面量从人肉纪律变成门禁。",
+  "layers": {
+    "core": { "mayImport": [], "domFree": true, "note": "纯逻辑/数据：无 DOM、无 canvas、无网络；只允许同层与 localStorage" },
+    "render": { "mayImport": ["core"], "domFree": false, "note": "画布与视听：WebGL/音频，只向下依赖 core" },
+    "io": { "mayImport": ["core"], "domFree": false, "note": "传输与协议：只认协议，不认玩法" },
+    "voice": { "mayImport": ["core"], "domFree": false, "denyRefs": ["App", "Avatar", "Game", "Quests", "Daily", "World", "Onboarding"], "note": "实时层：不知道体力/任务/地点，也不直接调 App；对外只发事件" },
+    "features": { "mayImport": ["core", "render", "io", "voice"], "domFree": false, "note": "可拔插玩法；只能经 state_read 只读世界状态，不得写 Game" },
+    "ui": { "mayImport": ["core", "render", "io", "voice", "features"], "domFree": false, "note": "DOM 装配层；不得直接写 Game（applyDelta 仍是唯一写入口）" }
+  },
+  "modules": {
+    "util": "core",
+    "i18n": "core",
+    "config": "core",
+    "game": "core",
+    "quests": "core",
+    "daily": "core",
+    "world": "core",
+    "memory": {
+      "layer": "core",
+      "mayImport": ["io"],
+      "note": "调用 Api.complete 做总结，但走的是可注入接缝（memory.js 里写明了 Test seam：测试注入同步函数）——这是刻意留的，不是耦合事故。因此显式放行 core->io。"
+    },
+    "nsfw": "core",
+    "state_read": { "layer": "core", "planned": true },
+    "avatar": "render",
+    "audio": "render",
+    "fx": "render",
+    "alarm": "features",
+    "api": "io",
+    "providers": { "layer": "io", "planned": true },
+    "protocol": { "layer": "io", "planned": true },
+    "turn": { "layer": "voice", "planned": true },
+    "vad": { "layer": "voice", "planned": true },
+    "endpoint": { "layer": "voice", "planned": true },
+    "echo": { "layer": "voice", "planned": true },
+    "stt": { "layer": "voice", "planned": true },
+    "npc": { "layer": "features", "planned": true },
+    "proactive": { "layer": "features", "planned": true },
+    "vision": { "layer": "features", "planned": true },
+    "app": "ui",
+    "onboarding": "ui",
+    "shell": "ui",
+    "kbd": "ui",
+    "settings": { "layer": "ui", "planned": true }
+  },
+  "allowCycles": [
+    {
+      "pair": ["game", "quests"],
+      "why": "刻意设计，不是事故。AUDIT §6.2：game.js 不认识任务（quest 块转发给 Quests.onQuestDelta），quests.js 的奖励只通过 Game 发放（Game.s.quest 直读 + Game.save/emit）。这条互引是‘applyDelta 是唯一写入口’这条不变式的代价。可以改成事件/回调，但不是优先项。"
+    }
+  ],
+  "globals": {
+    "util": ["Util"],
+    "i18n": ["I18n", "Langs"],
+    "config": ["Config"],
+    "game": ["Game"],
+    "quests": ["Quests", "Welcome"],
+    "daily": ["Daily"],
+    "world": ["World"],
+    "memory": ["Memory"],
+    "nsfw": ["Nsfw"],
+    "avatar": ["Avatar"],
+    "audio": ["Sound", "VoiceBank"],
+    "fx": ["Fx"],
+    "alarm": ["Alarm"],
+    "api": ["Api"],
+    "app": ["App"],
+    "onboarding": ["Onboarding"],
+    "shell": [],
+    "kbd": []
+  },
+  "coreForbidden": {
+    "_note": "core 层不允许出现的触达。localStorage 不在此列——持久化本来就是 core 的职责。",
+    "patterns": [
+      { "re": "document\\.", "what": "DOM" },
+      { "re": "getElementById", "what": "DOM" },
+      { "re": "querySelector", "what": "DOM" },
+      { "re": "createElement", "what": "DOM" },
+      { "re": "requestAnimationFrame", "what": "渲染循环" },
+      { "re": "\\bcanvas\\b", "what": "画布" },
+      { "re": "new Audio\\(", "what": "音频元素" },
+      { "re": "AudioContext", "what": "音频" },
+      { "re": "WebGL", "what": "画布" },
+      { "re": "\\bfetch\\(", "what": "网络" },
+      { "re": "XMLHttpRequest", "what": "网络" },
+      { "re": "WebSocket", "what": "网络" }
+    ]
+  },
+  "coreExceptions": {
+    "_note": "已声明的 core 层例外：出现时打印为‘已声明’而不是违规。声明要写明为什么无害，否则就是在给耦合开绿灯。",
+    "config": [
+      {
+        "re": "\\bfetch\\(",
+        "why": "只用于 dev 水合 config/providers.json（scripts/serve.py 提供）。打包宿主一律 404，所以运行期不会走网络。真要干净就把这一段挪到 io 层的 dev 模块。"
+      }
+    ]
+  },
+  "proxyContract": {
+    "_note": "三端（dev 服务器 / Electron 主进程 / Android AssetServer）共用同一个 /_proxy 契约，改一处必须三处同步。dev 服务器额外提供 config/providers.json 用于本地水合，这是**刻意差异**：打包宿主绝不提供 config/。",
+    "assertions": [
+      { "host": "scripts/serve.py", "label": "POST /_proxy 路由", "re": "\"/_proxy\"" },
+      { "host": "scripts/serve.py", "label": "GET /_proxy 路由", "re": "_proxy_get" },
+      { "host": "scripts/serve.py", "label": "目标必须 https", "re": "proxy target must be https" },
+      { "host": "scripts/serve.py", "label": "dev-only: providers.json 水合", "re": "/config/providers\\.json" },
+
+      { "host": "desktop/main.js", "label": "/_proxy 路由", "re": "'/_proxy'" },
+      { "host": "desktop/main.js", "label": "目标必须 https", "re": "proxy target must be https" },
+      { "host": "desktop/main.js", "label": "方法透传（GET+POST 同一入口）", "re": "method:\\s*request\\.method" },
+
+      { "host": "android/app/src/main/java/com/ryza/chat/AssetServer.java", "label": "POST /_proxy 路由", "re": "POST[\\s\\S]{0,60}_proxy" },
+      { "host": "android/app/src/main/java/com/ryza/chat/AssetServer.java", "label": "GET /_proxy 路由", "re": "GET[\\s\\S]{0,60}_proxy" },
+      { "host": "android/app/src/main/java/com/ryza/chat/AssetServer.java", "label": "目标必须 https", "re": "proxy target must be https" },
+      { "host": "android/app/src/main/java/com/ryza/chat/AssetServer.java", "label": "打包宿主不提供 config/", "re": "config/" }
+    ]
+  },
+  "versionLiterals": {
+    "_note": "版本单一来源是 config/version.json（scripts/stamp_version.js 只管 desktop/package.json 与 android/app/build.gradle）。任何硬写的 RyzaChat/<x.y.z> 字面量都会静默过期——实测三端都还停在 1.2.13。",
+    "pattern": "RyzaChat/(\\d+\\.\\d+\\.\\d+)",
+    "files": [
+      "scripts/serve.py",
+      "desktop/main.js",
+      "android/app/src/main/java/com/ryza/chat/AssetServer.java"
+    ]
+  }
+}
