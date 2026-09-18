@@ -399,6 +399,16 @@
     return reason != null;
   }
 
+  /* Local engines (VOICEVOX / AivisSpeech) live on another origin
+     (127.0.0.1:<port>), so they talk to the engine directly instead of going
+     through /_proxy — which only accepts https:// targets by design. The engine
+     has to permit the cross-origin call; when it does not, the error the
+     provider raises says so rather than reporting a bare network failure. */
+  function localFetch(url, opts) {
+    if (typeof fetch !== 'function') return Promise.reject(new Error('NO_FETCH'));
+    return fetch(url, opts);
+  }
+
   function request(url, body, apiKey, timeoutMs, epoch) {
     return new Promise(function (resolve, reject) {
       var xhr = new XMLHttpRequest();
@@ -1193,20 +1203,27 @@
       var tts = Config.section('tts');
       if (tts.mode === 'off') return Promise.resolve(null);
       mode = mode || (Config.section('state') || {}).mode || 'chat';
-      /* Per-provider credentials: qwen has its own baseUrl/apiKey so a MiMo
-         setup can never leak into a DashScope call (or back). */
-      if ((tts.provider || 'openai') === 'qwen') return Api._qwenSpeak(text, lang, mode);
-      if (tts.provider === 'fish') return Api._fishSpeak(text, lang, mode, emotion);
+      /* Which credentials belong to which provider is declared in
+         web/js/providers.js and resolved once here. The hand-written
+         per-provider branches were what let a provider switch keep reading the
+         previous endpoint (AUDIT 6.9). */
+      var cred = Providers.credentials(tts);
+      if (cred.capabilities.local) {
+        return Providers.speakLocal(cred, { text: text, fetch: localFetch });
+      }
+      if (cred.id === 'qwen') return Api._qwenSpeak(text, lang, mode);
+      if (cred.id === 'fish') return Api._fishSpeak(text, lang, mode, emotion);
+      if (!cred.apiKey) return Promise.reject(new Error('NO_KEY'));
       if (!tts.apiKey) return Promise.reject(new Error('NO_KEY'));
 
       var audio = { format: tts.format || 'wav' };
       if (tts.mode === 'clone') {
         audio.voice = 'pending';   // filled in below, once the wav is base64'd
       } else {
-        audio.voice = tts.presetVoice || 'Chloe';
+        audio.voice = cred.voice || 'Chloe';
       }
 
-      var model = tts.mode === 'clone' ? tts.modelClone : tts.modelPreset;
+      var model = cred.model;
       /* The shipped defaults are placeholders; sending them yields the
          server's confusing "unsupported model tts-model". Fail locally with
          a clear, translated toast instead. */
@@ -1217,14 +1234,14 @@
 
       function send(voiceField) {
         audio.voice = voiceField;
-        return request(localProxy(upstreamUrl(tts.baseUrl, '/chat/completions')), {
+        return request(localProxy(upstreamUrl(cred.baseUrl, '/chat/completions')), {
           model: model,
           messages: [
             { role: 'user', content: styleHint },
             { role: 'assistant', content: text }
           ],
           audio: audio
-        }, tts.apiKey, 180000).then(function (j) {
+        }, cred.apiKey, 180000).then(function (j) {
           var msg = j.choices && j.choices[0] && j.choices[0].message;
           var data = msg && msg.audio && msg.audio.data;
           if (!data) throw new Error('接口未返回音频');

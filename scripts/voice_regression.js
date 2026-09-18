@@ -90,7 +90,7 @@ sandbox.XMLHttpRequest = FakeXHR;
 vm.createContext(sandbox);
 const load = (f) => vm.runInContext(fs.readFileSync(path.join(WEB, f), 'utf8'),
                                    sandbox, { filename: f });
-for (const f of ['util.js', 'config.js', 'i18n.js', 'api.js', 'turn.js']) {
+for (const f of ['util.js', 'config.js', 'i18n.js', 'api.js', 'providers.js', 'turn.js']) {
   load(f);
 }
 const { Turn, Api, Config } = sandbox;
@@ -264,6 +264,70 @@ const sleep = () => new Promise((r) => setTimeout(r, 0));
   ok(ev2.some((e) => e.type === 'error'), 'D1 a synth failure is reported as an event');
   ok(Turn.state() === Turn.IDLE, 'D2 the turn returns to idle after a failure (no wedge)');
   ok(Turn.waiting() === 0, 'D3 nothing is left waiting after a failure');
+
+  console.log('\n=== E. provider registry (providers.js) ===');
+  const Prov = sandbox.Providers;
+  Config.set('tts.provider', 'qwen');
+  Config.set('tts.qwenApiKey', 'qk');
+  Config.set('tts.qwenBaseUrl', 'https://q.example');
+  Config.set('tts.apiKey', 'ok');
+  Config.set('tts.baseUrl', 'https://o.example');
+
+  const cq = Prov.credentials(Config.section('tts'));
+  ok(cq.id === 'qwen' && cq.apiKey === 'qk' && cq.baseUrl === 'https://q.example',
+     'E1 the active provider resolves to its OWN fields only');
+
+  Config.set('tts.provider', 'fish');
+  const cf = Prov.credentials(Config.section('tts'));
+  ok(cf.apiKey === '' && cf.baseUrl === '',
+     'E2 switching provider does NOT carry the previous key/baseUrl over (AUDIT 6.9)');
+
+  Config.set('tts.provider', 'voicevox');
+  const cv = Prov.credentials(Config.section('tts'));
+  ok(cv.capabilities.local === true && cv.apiKey === '',
+     'E3 a local engine needs no key');
+  ok(cv.baseUrl === 'http://127.0.0.1:50021/' && cv.voice === '0',
+     'E3 local engine has a working default URL and style id');
+
+  Config.set('tts.provider', 'openai');
+  Config.set('tts.mode', 'clone');
+  const cc = Prov.credentials(Config.section('tts'));
+  ok(cc.model !== '' && cc.model === Config.section('tts').modelClone,
+     'E4 openai in clone mode resolves the clone model, not the preset one');
+  Config.set('tts.mode', 'preset');
+
+  Config.set('tts.provider', 'nope');
+  ok(Prov.credentials(Config.section('tts')).id === 'openai',
+     'E5 an unknown provider id falls back to openai instead of throwing');
+  Config.set('tts.provider', 'voicevox');
+
+  /* The local engine protocol is two POSTs to the engine's own origin — one
+     implementation shared by VOICEVOX and AivisSpeech (that is what the table
+     buys: a compatible engine is a row, not a code path). */
+  const calls = [];
+  const stubFetch = (url, opts) => {
+    calls.push({ url: String(url), opts: opts });
+    if (String(url).indexOf('audio_query') >= 0) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ speedScale: 1 }) });
+    }
+    return Promise.resolve({ ok: true, blob: () => Promise.resolve({ type: 'audio/wav' }) });
+  };
+  const localUrl = await Prov.speakLocal(Prov.credentials(Config.section('tts')),
+                                         { text: 'やあ', fetch: stubFetch });
+  ok(calls.length === 2 && calls[0].url.indexOf('audio_query') >= 0 &&
+     calls[1].url.indexOf('synthesis') >= 0,
+     'E6 local engine: audio_query then synthesis');
+  ok(calls[0].opts.method === 'POST' && calls[0].url.indexOf('speaker=0') >= 0,
+     'E6 the style id travels as the speaker parameter');
+  ok(typeof localUrl === 'string' && localUrl.length > 0,
+     'E6 local synthesis returns a blob url like the cloud paths do');
+
+  let localErr = null;
+  await Prov.speakLocal(Prov.credentials(Config.section('tts')),
+                        { text: 'x', fetch: () => Promise.reject(new Error('failed to fetch')) })
+    .catch((e) => { localErr = e; });
+  ok(localErr && localErr.hint === 'local-engine' && /连不上本地引擎/.test(localErr.message),
+     'E7 an unreachable engine names the likely cause (not running / no cross-origin)');
 
   console.log('\n--- 汇总 ---');
   clearTimeout(watchdog);

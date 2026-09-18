@@ -2165,11 +2165,10 @@
         function (v) { Config.set('memory.summaryCap', Math.max(2, parseInt(v, 10) || 8)); });
 
       App._title(w, T('settings.tts'));
-      App._select(w, T('settings.tts.provider'), Config.section('tts').provider || 'openai', [
-        { v: 'openai', t: T('settings.tts.provider.openai') },
-        { v: 'qwen', t: T('settings.tts.provider.qwen') },
-        { v: 'fish', t: T('settings.tts.provider.fish') }
-      ], function (v) {
+      App._select(w, T('settings.tts.provider'), Config.section('tts').provider || 'openai',
+        Providers.rows.filter(function (r) { return r.kind === 'tts'; })
+          .map(function (r) { return { v: r.id, t: T(r.label) }; }),
+        function (v) {
         Config.set('tts.provider', v);
         if (v === 'fish' && Config.section('tts').mode === 'clone') {
           Config.set('tts.mode', 'preset');
@@ -2268,6 +2267,19 @@
           { v: 'preset', t: T('settings.ttsMode.preset') },
           { v: 'off', t: T('settings.ttsMode.off') }
         ], function (v) { Config.set('tts.mode', v); App.buildSettings(); });
+      } else if (Providers.isLocal(Config.section('tts').provider)) {
+        /* Local engines: no key, no model — an engine URL and a style id.
+           VOICEVOX and AivisSpeech share this shape (one implementation in
+           providers.js), so the form is written once from the row. */
+        var lrow = Providers.get(Config.section('tts').provider);
+        App._field(w, T('settings.baseUrl'),
+          Config.section('tts')[lrow.creds.baseUrl.split('.').pop()],
+          function (v) { Config.set(lrow.creds.baseUrl, v); },
+          { hint: T('settings.localEngineHint') });
+        App._field(w, T('settings.localStyle'), Config.section('tts')[lrow.creds.voice.split('.').pop()],
+          function (v) { Config.set(lrow.creds.voice, v); });
+        App._field(w, T('settings.speakHint'), Config.section('tts').styleHint,
+          function (v) { Config.set('tts.styleHint', v); }, { multi: true });
       } else {
       App._field(w, T('settings.baseUrl'), Config.section('tts').baseUrl,
         function (v) { Config.set('tts.baseUrl', v); });
@@ -2483,14 +2495,13 @@
 
     _testTts: function () {
       var tts = Config.section('tts');
-      var key = tts.provider === 'qwen' ? tts.qwenApiKey
-              : tts.provider === 'fish' ? tts.fishApiKey
-              : tts.apiKey;
-      if (!key) { App.toast(I18n.t('toast.needKey'), true); return; }
-      var model = tts.provider === 'qwen' ? (tts.qwenModel || 'qwen3-tts-flash')
-                : tts.provider === 'fish' ? (tts.fishModel || 'fishaudio-s21pro-flash')
-                : (tts.mode === 'clone' ? tts.modelClone : tts.modelPreset);
-      if (tts.provider !== 'fish' && Api.isPlaceholderModel(model)) {
+      /* One resolver decides which credentials are in play (providers.js) —
+         the ternary chain that used to live here drifted from Api.speak's own
+         branch list. */
+      var cred = Providers.credentials(tts);
+      if (!cred.capabilities.local && !cred.apiKey) { App.toast(I18n.t('toast.needKey'), true); return; }
+      var model = cred.model;
+      if (!cred.capabilities.local && cred.id !== 'fish' && Api.isPlaceholderModel(model)) {
         App.toast(I18n.t('toast.needModel'), true); return;
       }
       App.toast('合成中…');
