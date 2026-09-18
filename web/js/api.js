@@ -341,6 +341,62 @@
     return String(baseUrl || '').replace(/\/+$/, '') + path;
   }
 
+  /* ------------------------------------------------------------ speech input
+     Speech-to-text through the provider registry's `stt` row. This is transport,
+     which is why it lives here and not in voice.js / stt.js — the voice layer
+     must not know what HTTP is, so stt.js receives this as an injected port.
+
+     The multipart body is assembled by hand instead of with fetch+FormData, so
+     the call keeps the abort/timeout/error vocabulary every other request in
+     this file uses. The three /_proxy hosts forward the incoming Content-Type
+     (including the boundary) and the raw body verbatim, so multipart passes
+     through unmodified — checked in all three: scripts/serve.py,
+     desktop/main.js, android/.../AssetServer.java. That is also why
+     Content-Type is deliberately NOT set by hand below: doing so would drop the
+     boundary parameter and the endpoint would reject the body. */
+  function transcribe(blob, opts) {
+    opts = opts || {};
+    var cred = Providers.sttCredentials(Config.section('stt'));
+    if (!cred.baseUrl) return Promise.reject(new Error('NO_STT_URL'));
+    if (!blob || !blob.size) return Promise.reject(new Error('NO_AUDIO'));
+    var boundary = '----ryza' + Date.now().toString(36) + Math.random().toString(36).slice(2);
+    var head = [];
+    function field(name, value) {
+      head.push('--' + boundary + '\r\n' +
+                'Content-Disposition: form-data; name="' + name + '"\r\n\r\n' +
+                value + '\r\n');
+    }
+    if (cred.model) field('model', cred.model);
+    var iso = opts.lang ? Langs.sttLang(opts.lang) : '';
+    if (iso) field('language', iso);
+    field('response_format', 'json');
+    var headText = head.join('') +
+      '--' + boundary + '\r\n' +
+      'Content-Disposition: form-data; name="file"; filename="speech.wav"\r\n' +
+      'Content-Type: audio/wav\r\n\r\n';
+    var body = new Blob([headText, blob, '\r\n--' + boundary + '--\r\n'],
+                        { type: 'multipart/form-data; boundary=' + boundary });
+    return new Promise(function (resolve, reject) {
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', localProxy(upstreamUrl(cred.baseUrl, '/audio/transcriptions')), true);
+      xhr.timeout = opts.timeout || 60000;
+      if (cred.apiKey) {
+        xhr.setRequestHeader('Authorization', 'Bearer ' + cred.apiKey);
+        xhr.setRequestHeader('api-key', cred.apiKey);
+      }
+      xhr.onload = function () {
+        var j = null;
+        try { j = JSON.parse(xhr.responseText); } catch (e) {}
+        if (xhrJsonOk(xhr, j)) { resolve(String((j && j.text) || '').trim()); return; }
+        reject(new Error(apiErrorMessage(j, xhr.status, xhr.responseText)));
+      };
+      xhr.onerror = function () { reject(new Error('网络请求失败（跨域或未走本地代理）')); };
+      xhr.ontimeout = function () { reject(new Error('请求超时')); };
+      xhr.onabort = function () { reject(new Error('ABORTED')); };
+      xhr.send(body);
+    });
+  }
+
   /* Three hosts ship a same-origin /_proxy: scripts/serve.py (loopback http),
      the desktop shell (ryza://app — desktop/main.js protocol handler) and the
      Android AssetServer (loopback http). The desktop scheme is a standard
@@ -1059,6 +1115,8 @@
     _fishSampleUrls: fishSampleUrls,
     /* resolved per-mode TTS voice direction (base hint + mode layer) */
     ttsStyleFor: function (mode) { return ttsStyleFor(mode, Config.section('tts')); },
+    /* speech input: stt.js gets this as an injected port */
+    transcribe: transcribe,
 
     /* resolved reply language (auto = UI) */
     replyLang: function () {

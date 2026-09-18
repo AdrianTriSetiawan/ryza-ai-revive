@@ -302,22 +302,58 @@
          where an accepted transcript goes — this layer decides between
          filling the box and sending it. */
       if (window.Voice) {
+        var sttReady = function () {
+          return !!String((Config.section('stt') || {}).baseUrl || '').trim();
+        };
         Voice.setEcho(window.Echo);
         Voice.setSpeaker(function () { return !!(window.Turn && Turn.isSpeaking()); });
+        /* The second engine: our own capture + provider transcription. Injecting
+           it also connects it to Voice's gate, so echo suppression and the
+           half-duplex rule cover both engines instead of each growing its own. */
+        Voice.setCapture(window.Stt || null);
+        Voice.setEngine(function () {
+          var pref = (Config.section('stt') || {}).engine || 'auto';
+          if (pref !== 'auto') return pref;
+          /* The packaged shells cannot use the browser recogniser — absent in
+             Android's WebView, backed by nothing in Electron (measured: start()
+             succeeds, `onstart` fires, then `network`). With a transcription
+             endpoint configured they go straight to our own capture instead of
+             failing once per session first. Host knowledge lives here rather
+             than in the voice layer. */
+          var shell = !!window.ryzaShell ||
+                      /Android/i.test((navigator && navigator.userAgent) || '');
+          return (shell && sttReady()) ? 'capture' : 'auto';
+        });
+        Voice.setTranscriberReady(sttReady);
         Voice.setLang(function () {
           var lg = (window.Langs && Langs.voice && Langs.voice())
               || (window.Langs && Langs.llm && Langs.llm()) || 'ja';
           /* The recogniser wants BCP-47; i18n.js owns that mapping. */
           return (window.Langs && Langs.sttTag) ? Langs.sttTag(lg) : lg;
         });
-        Voice.setNotice(function (code, isErr) {
+        /* One notice handler for both engines — stt.js reports through the same
+           codes, and the two must not drift into different toasts. */
+        App._micNotice = function (code, isErr) {
           var c = String(code || '');
-          if (c === 'mic.denied' || c === 'mic.unsupported' || c === 'mic.unstable') {
-            App.toast(I18n.t(c), true);
-          } else {
-            App.toast(I18n.t('mic.failed') + c.replace(/^mic\.error:/, ''), !!isErr);
+          if (c === 'mic.on' || c === 'mic.off' || c === 'mic.empty') return;
+          if (c === 'mic.denied' || c === 'mic.unsupported' || c === 'mic.unstable' ||
+              c === 'mic.nodevice' || c === 'mic.switched' || c === 'mic.noTranscriber') {
+            App.toast(I18n.t(c), !!isErr);
+            return;
           }
-        });
+          App.toast(I18n.t('mic.failed') + c.replace(/^mic\.error:/, ''), !!isErr);
+        };
+        Voice.setNotice(App._micNotice);
+        if (window.Stt) {
+          Stt.setTranscriber(function (blob, opts) { return Api.transcribe(blob, opts); });
+          Stt.setNotice(App._micNotice);
+          /* The transcribe request takes a plain language code (api.js maps it
+             to ISO-639-1), not the recogniser's BCP-47 tag. */
+          Stt.setLang(function () {
+            return (window.Langs && Langs.voice && Langs.voice()) ||
+                   (window.Langs && Langs.llm && Langs.llm()) || 'ja';
+          });
+        }
         Voice.setSink(function (text) { App._onVoiceTranscript(text); });
         /* Onset barge-in, off by default: the recogniser cannot tell her
            voice from the player's, so on a setup without echo cancellation

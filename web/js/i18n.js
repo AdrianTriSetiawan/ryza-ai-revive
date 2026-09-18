@@ -218,6 +218,17 @@
       'settings.tts.provider.qwen': 'Qwen / 百炼（DashScope 兼容）',
       'settings.tts.provider.fish': 'Fish Audio',
       'settings.stt': '语音输入（麦克风）',
+      'settings.stt.engine': '语音输入方式',
+      'settings.stt.engine.auto': '自动（优先浏览器识别）',
+      'settings.stt.engine.webSpeech': '浏览器识别',
+      'settings.stt.engine.capture': '录音 + 转写接口',
+      'settings.stt.provider': '转写服务',
+      'settings.stt.provider.whisper': 'OpenAI 兼容转写（/audio/transcriptions）',
+      'settings.stt.baseUrl': '转写接口地址',
+      'settings.stt.baseUrl.hint': '例如 https://api.openai.com/v1（经本地代理转发）',
+      'settings.stt.apiKey': '转写接口密钥',
+      'settings.stt.model': '转写模型',
+      'settings.stt.model.hint': '端点的模型 ID，例如 whisper-1',
       'settings.autoSend': '识别后自动发送',
       'settings.bargeIn': '你说话时打断她',
       'settings.bargeInHint': '开启后，麦克风听到你开口就会中断她当前的台词。需要系统回声消除有效，否则她可能被自己的声音打断（默认关闭）。',
@@ -232,6 +243,11 @@
       'mic.unsupported': '此环境不支持语音识别',
       'mic.unstable': '语音识别反复中断，已停止',
       'mic.failed': '语音识别出错：',
+      'mic.on': '麦克风已开启', 'mic.off': '麦克风已关闭',
+      'mic.nodevice': '找不到麦克风设备',
+      'mic.switched': '浏览器识别不可用，已改用转写接口',
+      'mic.noTranscriber': '请先在设置里填写转写接口',
+      'mic.empty': '没听清（转写结果为空）',
       'settings.tts.provider.voicevox': 'VOICEVOX（本地引擎）',
       'settings.tts.provider.aivis': 'AivisSpeech（本地引擎）',
       'settings.localEngineHint': '本地引擎地址。页面与引擎不同源，需要引擎允许跨来源访问；引擎未启动会提示连不上。',
@@ -465,6 +481,17 @@
       'settings.tts.provider.qwen': 'Qwen / Bailian（DashScope 互換）',
       'settings.tts.provider.fish': 'Fish Audio',
       'settings.stt': '音声入力（マイク）',
+      'settings.stt.engine': '音声入力の方式',
+      'settings.stt.engine.auto': '自動（ブラウザ認識を優先）',
+      'settings.stt.engine.webSpeech': 'ブラウザ音声認識',
+      'settings.stt.engine.capture': '録音 + 文字起こしAPI',
+      'settings.stt.provider': '文字起こしサービス',
+      'settings.stt.provider.whisper': 'OpenAI 互換の文字起こし（/audio/transcriptions）',
+      'settings.stt.baseUrl': '文字起こしAPIのURL',
+      'settings.stt.baseUrl.hint': '例 https://api.openai.com/v1（ローカルプロキシ経由）',
+      'settings.stt.apiKey': '文字起こしAPIキー',
+      'settings.stt.model': '文字起こしモデル',
+      'settings.stt.model.hint': 'エンドポイントのモデルID（例 whisper-1）',
       'settings.autoSend': '認識後に自動送信',
       'settings.bargeIn': '話しかけたら割り込む',
       'settings.bargeInHint': 'オンにすると、マイクがあなたの声を拾った時点で彼女の台詞を中断します。エコーキャンセルが効いていないと自分の声で中断されることがあります（既定はオフ）。',
@@ -479,6 +506,11 @@
       'mic.unsupported': 'この環境では音声認識を利用できません',
       'mic.unstable': '音声認識が繰り返し中断したため停止しました',
       'mic.failed': '音声認識エラー：',
+      'mic.on': 'マイクをオンにしました', 'mic.off': 'マイクをオフにしました',
+      'mic.nodevice': 'マイクが見つかりません',
+      'mic.switched': 'ブラウザ認識が使えないため、文字起こしAPIに切り替えました',
+      'mic.noTranscriber': '設定で文字起こしAPIを入力してください',
+      'mic.empty': '聞き取れませんでした（結果が空）',
       'settings.tts.provider.voicevox': 'VOICEVOX（ローカル）',
       'settings.tts.provider.aivis': 'AivisSpeech（ローカル）',
       'settings.localEngineHint': 'ローカルエンジンのURL。ページとは別オリジンなのでエンジン側のクロスオリジン許可が必要です。未起動なら接続不可と表示します。',
@@ -712,6 +744,17 @@
       'settings.tts.provider.qwen': 'Qwen / Bailian (DashScope-compatible)',
       'settings.tts.provider.fish': 'Fish Audio',
       'settings.stt': 'Voice input (microphone)',
+      'settings.stt.engine': 'Speech input engine',
+      'settings.stt.engine.auto': 'Auto (prefer the browser recognizer)',
+      'settings.stt.engine.webSpeech': 'Browser recognizer',
+      'settings.stt.engine.capture': 'Capture + transcription endpoint',
+      'settings.stt.provider': 'Transcription service',
+      'settings.stt.provider.whisper': 'OpenAI-compatible transcription (/audio/transcriptions)',
+      'settings.stt.baseUrl': 'Transcription endpoint',
+      'settings.stt.baseUrl.hint': 'e.g. https://api.openai.com/v1 (sent through the local proxy)',
+      'settings.stt.apiKey': 'Transcription API key',
+      'settings.stt.model': 'Transcription model',
+      'settings.stt.model.hint': 'the endpoint model id, e.g. whisper-1',
       'settings.autoSend': 'Auto-send after recognition',
       'settings.bargeIn': 'Interrupt her when you speak',
       'settings.bargeInHint': 'When on, the microphone cuts her off the moment you start talking. This needs working echo cancellation — otherwise her own voice can interrupt her (off by default).',
@@ -726,6 +769,11 @@
       'mic.unsupported': 'Speech recognition is not available here',
       'mic.unstable': 'Speech recognition kept dropping — stopped',
       'mic.failed': 'Speech recognition error: ',
+      'mic.on': 'Microphone on', 'mic.off': 'Microphone off',
+      'mic.nodevice': 'No microphone device found',
+      'mic.switched': 'Browser recognition unavailable - switched to the transcription endpoint',
+      'mic.noTranscriber': 'Set a transcription endpoint in settings first',
+      'mic.empty': 'Nothing was transcribed',
       'settings.tts.provider.voicevox': 'VOICEVOX (local engine)',
       'settings.tts.provider.aivis': 'AivisSpeech (local engine)',
       'settings.localEngineHint': 'Local engine URL. The page is a different origin, so the engine must allow cross-origin calls; if it is not running you get a connect error.',
@@ -1185,6 +1233,15 @@
     zh: 'zh-CN', 'zh-tw': 'zh-TW', ja: 'ja-JP', en: 'en-US',
     hi: 'hi-IN', id: 'id-ID', 'pt-br': 'pt-BR'
   };
+  /* ISO-639-1 for the transcription request's `language` field. A DIFFERENT
+     namespace from the BCP-47 tags above (an ASR endpoint wants 'ja', the
+     recogniser wants 'ja-JP'), so it is a separate table rather than a
+     .slice(0,2) — 'zh-tw' would otherwise become 'zh' by luck and 'pt-br'
+     would lose its region. */
+  var STT_ISO = {
+    zh: 'zh', 'zh-tw': 'zh', ja: 'ja', en: 'en',
+    hi: 'hi', id: 'id', 'pt-br': 'pt'
+  };
   var Langs = {
     ui: function () { return (Config.section('app') || {}).lang || 'zh'; },
     voice: function () {
@@ -1205,6 +1262,9 @@
        silently becoming Japanese. */
     sttTag: function (lg) { return STT_TAGS[lg] || lg || 'ja-JP'; },
     STT_TAGS: STT_TAGS,
+    /* ISO-639-1 for the ASR endpoint; unknown codes pass through. */
+    sttLang: function (lg) { return STT_ISO[lg] || lg || ''; },
+    STT_ISO: STT_ISO,
     ALL: [
       { v: 'auto', k: 'lang.auto' },
       { v: 'zh', k: 'lang.zh' }, { v: 'zh-tw', k: 'lang.zh-tw' },

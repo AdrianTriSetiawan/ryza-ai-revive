@@ -47,6 +47,20 @@
        provider 'fish'  : Fish Audio Open API (https://fishaudio.org/api/open/v1).
                           fishVoice empty = clone from local Ryza prologue
                           samples on first speak; fishModel = engine id. */
+    /* Speech input: the transcription endpoint (provider registry row kind
+       'stt'). Kept apart from `app.stt`, which is only the on/off master switch
+       — this section is the transport, so it has its own endpoint and key like
+       every other provider (switching hosts must not carry a stale key along). */
+    stt: {
+      provider: 'whisper',
+      baseUrl: '',                   // player's own OpenAI-compatible endpoint
+      apiKey: '',
+      model: 'whisper-1',
+      /* 'auto' prefers the browser recogniser when it exists (streaming and
+         zero-config) and falls back to our own capture + this endpoint. Force it
+         either way if a host's recogniser misbehaves without saying so. */
+      engine: 'auto'
+    },
     tts: {
       provider: 'openai',
       baseUrl: '',

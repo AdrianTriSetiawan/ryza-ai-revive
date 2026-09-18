@@ -66,6 +66,22 @@
       creds: { baseUrl: 'tts.aivisBaseUrl', voice: 'tts.aivisVoice' },
       defaults: { baseUrl: 'http://127.0.0.1:10101/', voice: '0' },
       capabilities: { instructions: false, emotion: false, clone: false, local: true }
+    },
+    /* --------------------------------------------------------------- stt
+       Speech-to-text as a provider, the way airi keeps it, instead of the
+       browser's cloud recogniser (which is absent in Electron and unusable in
+       the APK — measured, see web/js/stt.js). One row, because what we
+       implement is the one shape that matters: an OpenAI-compatible
+       POST /audio/transcriptions taking a multipart `file`. The player points
+       baseUrl at their own endpoint and fills the model id; the default is the
+       canonical id of that API. No local engine — a local ASR needs a model
+       runtime, which is a separate spike (docs §8). */
+    {
+      id: 'whisper', kind: 'stt',
+      label: 'settings.stt.provider.whisper',
+      creds: { baseUrl: 'stt.baseUrl', apiKey: 'stt.apiKey', model: 'stt.model' },
+      defaults: { model: 'whisper-1' },
+      capabilities: { local: false }
     }
   ];
 
@@ -163,6 +179,31 @@
         model: model,
         voice: pick(tts, c.voice, row.defaults && row.defaults.voice)
       };
+    },
+
+    /* The same resolver for the speech-input side. It takes the whole `stt`
+       settings section, and like the TTS one it returns only the ACTIVE row's
+       own fields, so pointing the transcriber at a new host cannot carry the
+       previous key or URL along. */
+    sttCredentials: function (stt) {
+      stt = stt || {};
+      var row = BY_ID[stt.provider] && BY_ID[stt.provider].kind === 'stt'
+        ? BY_ID[stt.provider]
+        : ROWS.filter(function (r) { return r.kind === 'stt'; })[0];
+      if (!row) return { id: '', capabilities: {}, baseUrl: '', apiKey: '', model: '' };
+      var c = row.creds;
+      return {
+        id: row.id,
+        capabilities: row.capabilities,
+        baseUrl: pick(stt, c.baseUrl, row.defaults && row.defaults.baseUrl),
+        apiKey: pick(stt, c.apiKey),
+        model: pick(stt, c.model, row.defaults && row.defaults.model)
+      };
+    },
+
+    idsOfKind: function (kind) {
+      return ROWS.filter(function (r) { return r.kind === kind; })
+                 .map(function (r) { return r.id; });
     },
 
     /* Synthesize through a local engine. Returns a blob URL, like the cloud

@@ -328,11 +328,44 @@
         function (v) { Config.set('app.rim', v); });
       App._switch(w, T('settings.stt'), Config.section('app').stt !== 'off',
         function (v) {
-          Config.set('app.stt', v ? 'webSpeech' : 'off');
+          /* 'on' going forward; an old save holding 'webSpeech' also means on,
+             so no migration is needed — only 'off' is off. */
+          Config.set('app.stt', v ? 'on' : 'off');
           if (window.Voice && !v) Voice.stop();
           if (App._setupMic) App._setupMic();
           App._syncMic();
         });
+      /* Which engine, and where the transcription goes. The endpoint is its own
+         field set (provider registry row kind 'stt'), exactly like TTS, so
+         pointing it at a new host cannot carry the old key along. */
+      if (window.Providers && window.Stt) {
+        App._select(w, T('settings.stt.engine'), Config.section('stt').engine || 'auto', [
+          { v: 'auto', t: T('settings.stt.engine.auto') },
+          { v: 'webSpeech', t: T('settings.stt.engine.webSpeech') },
+          { v: 'capture', t: T('settings.stt.engine.capture') }
+        ], function (v) {
+          Config.set('stt.engine', v);
+          if (window.Voice) { Voice.stop(); App._setupMic(); }
+        });
+        var sttProv = Providers.idsOfKind('stt');
+        if (sttProv.length) {
+          App._select(w, T('settings.stt.provider'), Config.section('stt').provider || sttProv[0],
+            sttProv.map(function (id) {
+              var r = Providers.get(id);
+              return { v: id, t: T((r && r.label) || id) };
+            }),
+            function (v) { Config.set('stt.provider', v); App.buildSettings(); });
+        }
+        App._field(w, T('settings.stt.baseUrl'), Config.section('stt').baseUrl,
+          function (v) { Config.set('stt.baseUrl', v.trim()); if (window.Voice) App._setupMic(); },
+          { hint: T('settings.stt.baseUrl.hint') });
+        App._field(w, T('settings.stt.apiKey'), Config.section('stt').apiKey,
+          function (v) { Config.set('stt.apiKey', v.trim()); },
+          { password: true });
+        App._field(w, T('settings.stt.model'), Config.section('stt').model,
+          function (v) { Config.set('stt.model', v.trim()); },
+          { hint: T('settings.stt.model.hint') });
+      }
       App._switch(w, T('settings.autoSend'), Config.section('app').autoSend,
         function (v) { Config.set('app.autoSend', !!v); });
       App._switch(w, T('settings.bargeIn'), !!Config.section('app').bargeIn,

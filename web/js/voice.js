@@ -41,6 +41,16 @@
 
   var _sink = null, _speaker = null, _notice = null, _lang = null, _echo = null;
   var _barge = null;        /* fn() — performs the interruption; null = disabled */
+  /* Two engines behind one gate (this module owns the gate, so both must go
+     through it — echo suppression and the half-duplex rule are engine-agnostic):
+       'webSpeech' — the browser's own recogniser, streaming, zero-config
+       'capture'   — web/js/stt.js: our own PCM capture + provider transcription
+     The recogniser is absent in Electron and unusable in the APK (measured), so
+     'capture' is what makes the microphone work where the app actually ships. */
+  var _capture = null;
+  var _enginePref = null;   /* fn() -> 'auto' | 'webSpeech' | 'capture' */
+  var _transcriberReady = null;  /* fn() -> is a transcription endpoint configured */
+  var _webSpeechDead = false;    /* the recogniser answered, and refused */
 
   var _want = false;        /* the player asked for the mic to be on */
   var _rec = null;
@@ -102,7 +112,26 @@
       if (code === 'not-allowed' || code === 'service-not-allowed') {
         Voice._want = _want = false;
         notice('mic.denied', true);
+        /* Emit, or the button keeps its "listening" look while isListening() is
+           already false. The mic.unstable path below always did this. */
+        Voice._emitState();
         return;
+      }
+      /* The recogniser exists but its backend does not. Measured in the packaged
+         Electron shell: start() succeeds, `onstart` fires, then `network` — so
+         the constructor being present proves nothing, and this is the only way
+         to find out. Strike it off for the session and move to the capture
+         engine, which is what makes the microphone usable in the exe at all. */
+      if (code === 'network' || code === 'language-not-supported') {
+        _webSpeechDead = true;
+        try { if (_rec) _rec.stop(); } catch (e) {}
+        if (Voice.engine() === 'capture') {
+          notice('mic.switched', false);
+          var wasWant = _want;
+          _want = false;
+          if (wasWant) Voice.start();
+          return;
+        }
       }
       notice('mic.error:' + code, true);
     };
@@ -152,17 +181,57 @@
     /* Injecting the interrupt keeps this module ignorant of turns: App wires it
        to Turn.interrupt. Passing null disables barge-in entirely. */
     setBargeIn: function (fn) { _barge = (typeof fn === 'function') ? fn : null; },
+    /* The capture engine (web/js/stt.js). Injecting it also connects it to THIS
+       module's gate, so both engines are filtered by the same echo/half-duplex
+       rules instead of each growing its own. */
+    setCapture: function (mod) {
+      _capture = mod || null;
+      if (_capture && _capture.setSink) _capture.setSink(accept);
+      if (_capture && _capture.setOnset) _capture.setOnset(function () { Voice._onSpeechStart(); });
+    },
+    setEngine: function (fn) { _enginePref = (typeof fn === 'function') ? fn : null; },
+    /* fn() -> whether a transcription endpoint is configured. Without one the
+       capture engine has nothing to send the audio to, so it must not be chosen
+       (the player then gets "configure it in settings" instead of silence). */
+    setTranscriberReady: function (fn) { _transcriberReady = (typeof fn === 'function') ? fn : null; },
+
+    /* Which engine will actually be used, in preference order:
+         webSpeech  — streaming and zero-config, so it wins when it exists
+         capture    — our own audio → provider transcription
+       A recogniser that answered and refused (Electron: `network`) is struck off
+       for the session, which is the difference between "feature is dead" and
+       "feature switched itself to the path that works". */
+    engine: function () {
+      var pref = (_enginePref && _enginePref()) || 'auto';
+      var hasRec = !!Ctor() && !_webSpeechDead;
+      var hasCap = !!(_capture && _capture.available && _capture.available()) &&
+                   (!_transcriberReady || !!_transcriberReady());
+      if (pref === 'webSpeech') return hasRec ? 'webSpeech' : null;
+      if (pref === 'capture') return hasCap ? 'capture' : null;
+      if (hasRec) return 'webSpeech';
+      return hasCap ? 'capture' : null;
+    },
 
     /* ------------------------------------------------------------- state */
-    available: function () { return !!Ctor(); },
+    available: function () { return !!Voice.engine(); },
     isListening: function () { return !!_want; },
     suppressedUntil: function () { return _suppressedUntil; },
 
     start: function () {
-      if (!Ctor()) { notice('mic.unsupported', true); return false; }
+      var eng = Voice.engine();
+      if (!eng) { notice('mic.unsupported', true); return false; }
       if (_want) return true;
       _want = true;
       _restarts = 0;
+      if (eng === 'capture') {
+        /* stt.js reports its own failures through its notice port; the promise
+           is only used to keep _want honest. */
+        _capture.start().then(function (okFlag) {
+          if (!okFlag && _want) { _want = false; Voice._emitState(); }
+        });
+        Voice._emitState();
+        return true;
+      }
       try {
         _rec = _rec || build();
         _rec.start();
@@ -179,6 +248,7 @@
       _want = false;
       Voice._cancelBarge();
       try { if (_rec) _rec.stop(); } catch (e) { /* already stopped */ }
+      try { if (_capture) _capture.stop(); } catch (e) { /* already stopped */ }
       Voice._emitState();
       return true;
     },

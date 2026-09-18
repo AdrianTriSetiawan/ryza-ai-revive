@@ -52,21 +52,43 @@ powershell -File scripts/build_apk.ps1
 
 | File | Responsibility |
 |---|---|
-| `app.js` | Composition: boot, talk loop, sheets, HUD. Does not own numeric RPG state. |
-| `api.js` | LLM/TTS transport, tagged-reply parsing, `/_proxy`, per-provider TTS fields |
-| `config.js` | Settings persistence; optional hydration from local `providers.json` |
+| `app.js` | Composition: boot, talk loop, sheets, HUD, port wiring (`_wirePorts`). Does not own numeric RPG state. |
+| `api.js` | LLM/TTS/STT transport, tagged-reply parsing, reply epoch, `/_proxy`, per-provider credential fields |
+| `config.js` | Settings persistence; optional hydration from local `providers.json`; shared data tables |
+| `providers.js` | Speech provider registry (TTS + STT), one row per backend; the single credential resolver |
+| `turn.js` | Who is speaking: intent queue (priority/queue/interrupt/replace), playback cancellation, reply epoch |
+| `stt.js` | Speech input: microphone capture, energy gate + endpoint, WAV packing; transcribes through an injected transport port |
+| `voice.js` | Microphone session and its gate: half-duplex rule, cooldown, echo checks; engine choice (browser recogniser / capture) |
+| `echo.js` | Text echo suppression (20 s / 1200 chars lookback, 0.88 similarity) |
+| `npc.js` | Multi-speaker protocol (Ryza / islander / narration), candidate scoring, interaction frequency |
+| `settings.js` | Settings screen assembly (forms, language matrix, cheat, save slots) |
 | `avatar.js` | WebGL portrait and scene camera; posture; tap hit-testing |
 | `game.js` | RPG reducer; `applyDelta` is the sole write path |
 | `quests.js` | Quest lifecycle and offline action tables |
 | `daily.js` | Daily rewards issued through `Game` |
 | `memory.js` | Session / summary cards (disjoint from `Game.s.memory`) |
 | `world.js` | Map hierarchy, NPC placement, time-of-day |
-| `i18n.js` | Seven UI locales; `Langs` slots for UI / voice pack / LLM / TTS |
-| `audio.js`, `alarm.js`, `fx.js`, `shell.js` | Routing, alarms, canvas FX, Electron window controls |
+| `i18n.js` | Seven UI locales; `Langs` slots for UI / voice pack / LLM / TTS, plus BCP-47 (`sttTag`) and ISO-639-1 (`sttLang`) |
+| `audio.js`, `alarm.js`, `fx.js`, `shell.js`, `nsfw.js`, `onboarding.js`, `kbd.js`, `util.js` | Routing, alarms, canvas FX, Electron window controls, clothing variant, prologue/tutorial, Android keyboard, shared helpers |
+
+**Layering.** `config/layers.json` declares each module's layer and the layers it may
+import; `scripts/layering_check.js --strict` enforces five checks (upward references,
+cycles, core purity, the three-host `/_proxy` contract, version literals) and must
+report zero. Cross-module calls go through injected ports, never upward calls: a
+module's dependencies are wired in `App._wirePorts()` and default to inert, which is
+what lets every module load alone in the headless regressions.
 
 **Side-effect protocol.** Visual fields occupy the first tag line of a model reply. Stamina, inventory, and quest updates occupy a trailing `<state>` JSON block, stripped before display and TTS. The protocol does not require tool calling, which many OpenAI-compatible endpoints omit.
 
-**TTS.** Credential fields are partitioned by provider (`openai` / `qwen` / `fish`) so a host switch cannot reuse the previous base URL or key.
+**TTS.** Credential fields are partitioned by provider (`openai` / `qwen` / `fish`) so a host switch cannot reuse the previous base URL or key. The same rule covers speech input (`stt.baseUrl` / `stt.apiKey`).
+
+**Speech input.** Two engines behind one gate: the browser's own recogniser (streaming,
+zero-config) and the client's own PCM capture plus a provider transcription endpoint
+(OpenAI-compatible `POST /audio/transcriptions`, routed through `/_proxy` as
+`multipart/form-data`). The packaged shells use the second: Electron ships no speech
+backend and has no recogniser at all on Android, and the WebView needs `RECORD_AUDIO`.
+The gate — half-duplex, cooldown, text echo suppression — is shared, so both engines
+follow the same rules.
 
 **Language matrix.** `app.lang`, `voice.lang`, `llm.lang`, `tts.lang`. When TTS language differs from LLM language, `Api.translate` runs first; on-screen text remains in `llm.lang`.
 
