@@ -375,9 +375,35 @@
     return true;
   }
 
-  function request(url, body, apiKey, timeoutMs) {
+  /* --------------------------------------------------------------- turn epoch
+     Every chat call supersedes the previous one: a reply that resolves after
+     the epoch moved on is STALE and must not be applied. That closes AUDIT
+     11.4-3 (the retry bar could fire twice and the two replies could land out
+     of order), and it is the cancellation channel interruption uses — bumping
+     the epoch aborts the XHR still in flight, so an interrupted turn stops
+     costing bandwidth instead of merely being ignored. See web/js/turn.js. */
+  var _epoch = 0;
+  var _inflight = null;      /* { xhr, epoch } */
+
+  function staleError() {
+    var e = new Error('STALE');
+    e.stale = true;
+    return e;
+  }
+
+  function abortInflight(reason) {
+    if (!_inflight) return false;
+    var x = _inflight;
+    _inflight = null;
+    try { x.xhr.abort(); } catch (e) {}
+    return reason != null;
+  }
+
+  function request(url, body, apiKey, timeoutMs, epoch) {
     return new Promise(function (resolve, reject) {
       var xhr = new XMLHttpRequest();
+      var tracked = (epoch != null);
+      function untrack() { if (tracked && _inflight && _inflight.xhr === xhr) _inflight = null; }
       xhr.open('POST', url, true);
       xhr.timeout = timeoutMs || 120000;
       xhr.setRequestHeader('Content-Type', 'application/json');
@@ -386,13 +412,16 @@
         xhr.setRequestHeader('api-key', apiKey);
       }
       xhr.onload = function () {
+        untrack();
         var j = null;
         try { j = JSON.parse(xhr.responseText); } catch (e) {}
         if (xhrJsonOk(xhr, j)) resolve(j);
         else reject(new Error(apiErrorMessage(j, xhr.status, xhr.responseText)));
       };
-      xhr.onerror = function () { reject(new Error('网络请求失败（跨域或未走本地代理）')); };
-      xhr.ontimeout = function () { reject(new Error('请求超时')); };
+      xhr.onerror = function () { untrack(); reject(new Error('网络请求失败（跨域或未走本地代理）')); };
+      xhr.ontimeout = function () { untrack(); reject(new Error('请求超时')); };
+      xhr.onabort = function () { untrack(); reject(staleError()); };
+      if (tracked) _inflight = { xhr: xhr, epoch: epoch };
       xhr.send(JSON.stringify(body));
     });
   }
@@ -1035,10 +1064,22 @@
     },
 
     /* ------------------------------------------------------------- LLM */
+    /* ---------------------------------------------------------- turn epoch
+       Turn.newTurn / App own the decision to start a turn; this is the counter
+       and the abort. Kept on Api because aborting the request is a transport
+       concern — turn.js never learns what HTTP is. */
+    turnEpoch: function () { return _epoch; },
+    newTurn: function (reason) { _epoch++; abortInflight(reason); return _epoch; },
+    isStale: function (e) { return e !== _epoch; },
+    abortInflight: abortInflight,
+
     chat: function (history, userText, opts) {
       var llm = Config.section('llm');
       if (!llm.apiKey) return Promise.reject(new Error('NO_KEY'));
       opts = opts || {};
+      /* No epoch handed in? Then this call is its own turn (side-quest text,
+         boot greeting…) and still gets stale protection. */
+      var epoch = (opts.epoch != null) ? opts.epoch : Api.newTurn();
       var st = Config.section('state');
       var outLang = opts.lang || Api.replyLang();
       var mem = '';
@@ -1071,7 +1112,11 @@
       };
       attachThinking(body, llm, _modelMeta && _modelMeta.id === llm.model ? _modelMeta : null);
       return request(localProxy(upstreamUrl(llm.baseUrl, '/chat/completions')),
-                     body, llm.apiKey).then(function (j) {
+                     body, llm.apiKey, undefined, epoch).then(function (j) {
+        /* Interrupted / superseded while the request was in flight: the reply
+           must not reach the caller at all (no history push, no face change,
+           no speech). */
+        if (Api.isStale(epoch)) throw staleError();
         return parseTaggedReply(choiceText(j));
       });
     },

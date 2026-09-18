@@ -201,6 +201,35 @@
             App.refreshHud();
           });
         }
+        /* Turn owns "who is speaking". It gets the three things only this layer
+           can supply: how to synthesize (language matrix + per-mode direction),
+           how to play (the <audio> element, abortable mid-utterance), and how to
+           cancel an in-flight reply (Api's epoch). */
+        if (window.Turn) {
+          Turn.setTurnCanceller(function (reason) { return Api.newTurn(reason); });
+          Turn.setSynth(function (text, meta) {
+            var st2 = Config.section('state');
+            var replyL = (window.Langs && Langs.llm) ? Langs.llm() : 'ja';
+            var ttsL = (window.Langs && Langs.tts) ? Langs.tts() : replyL;
+            var prep = (ttsL !== replyL && Api.translate)
+              ? Api.translate(text, ttsL) : Promise.resolve(text);
+            return prep.then(function (t) {
+              return Api.speak(t, ttsL, (meta && meta.mode) || st2.mode, (meta && meta.emotion) || '');
+            });
+          });
+          Turn.setPlayer(function (url, signal, meta) {
+            return App.playSpeech(url, signal, meta && meta.fx);
+          });
+          /* Synthesis failures surface here now that Turn owns the utterance
+             (the toast text is the same one speakThen used to emit). */
+          Turn.on(function (ev) {
+            if (ev.type !== 'error') return;
+            var msg = (ev.error && ev.error.message) || '';
+            App.toast(msg === 'NO_KEY' ? I18n.t('toast.needKey')
+                  : msg === 'NO_MODEL' ? I18n.t('toast.needModel')
+                  : I18n.t('toast.ttsFail') + msg, true);
+          });
+        }
         Avatar.init(function () {
           App._loadSceneFor(st.stage, st.tod);
           App._tickTime();          // adopt the wall/flow clock once the scene is up
@@ -1223,14 +1252,20 @@
       App.showTyping();
       Welcome.mark('talk');
 
+      /* A new turn supersedes whatever was in flight: it stops her speech,
+         drops queued lines, and invalidates a reply still on the wire (the
+         epoch Api.chat re-checks when it resolves). */
+      var turnEpoch = (window.Turn && Turn.beginTurn) ? Turn.beginTurn('say') : null;
       Api.chat(App.history, text, {
         mode: st.mode, style: st.style,
+        epoch: turnEpoch,
         rpgContext: App._rpgContext(),
         sceneSection: App._sceneContext(),
         nsfwSection: window.Nsfw ? Nsfw.screenFact() : ''
       })
         .then(function (reply) {
           App.speaking = false;
+          if (window.Turn && Turn.finishTurn) Turn.finishTurn();
           document.getElementById('btn-send').disabled = false;
           App.history.push({ role: 'user', content: text });
           App.remember('user', text);
@@ -1268,7 +1303,12 @@
         })
         .catch(function (e) {
           App.speaking = false;
+          if (window.Turn && Turn.finishTurn) Turn.finishTurn();
           document.getElementById('btn-send').disabled = false;
+          /* Superseded on purpose (interruption / a newer turn): there is
+             nothing to report and no retry to offer — surfacing it would look
+             like a failure for something the user asked for. */
+          if (e && e.stale) return;
           var bar = document.getElementById('retry-bar');
           if (bar && e.message !== 'NO_KEY') bar.classList.remove('hidden');
           App.toast(e.message === 'NO_KEY' ? I18n.t('toast.needKey')
@@ -1281,27 +1321,52 @@
       var st = Config.section('state');
       var app = Config.section('app');
       if (!app.voice || st.style === 'text' || Config.section('tts').mode === 'off') return;
-      /* language matrix: display stays in the reply language; when the TTS
-         slot asks for a different one, translate first, then synthesize. */
-      var replyL = (window.Langs && Langs.llm()) || 'ja';
-      var ttsL = (window.Langs && Langs.tts()) || replyL;
-      var prep = (ttsL !== replyL && Api.translate)
-        ? Api.translate(text, ttsL) : Promise.resolve(text);
-      prep.then(function (speakText) {
-        /* mode selects the per-mode TTS voice direction (ASMR whisper…);
-           the face on screen travels with the request (Fish tags delivery) */
-        return Api.speak(speakText, ttsL, st.mode,
-          emotion || (window.Avatar && Avatar.currentEmotion && Avatar.currentEmotion()) || '');
-      }).then(function (url) {
-        /* Talking starts when the audio actually exists — before that the
-           mouth sat closed (RMS target 0) for the whole TTS latency, and a
-           failed synth left _talking stuck true forever. */
-        if (!url) return;
-        App.playUrl(url, Api.MODE_PLAY_FX[st.mode] || null);
-      }).catch(function (e) {
-        App.toast(e.message === 'NO_KEY' ? I18n.t('toast.needKey')
-              : e.message === 'NO_MODEL' ? I18n.t('toast.needModel')
-              : I18n.t('toast.ttsFail') + e.message, true);
+      /* Turn owns the utterance: it runs the synth port (which applies the
+         language matrix and the per-mode voice direction) and the player port,
+         and it is what an interruption cancels. */
+      Turn.speak(text, {
+        mode: st.mode,
+        emotion: emotion || (window.Avatar && Avatar.currentEmotion && Avatar.currentEmotion()) || '',
+        fx: Api.MODE_PLAY_FX[st.mode] || null,
+        ownerId: 'chat'
+      });
+    },
+
+    /* Shared end-of-audio bookkeeping. The rate reset is not cosmetic: ASMR
+       plays at 0.93× and a missed reset made the next alarm/tap clip play
+       detuned (AUDIT 8). */
+    _stopAudio: function (url, holdMs) {
+      var a = App.audio;
+      if (a) {
+        try { a.pause(); } catch (e) {}
+        a.playbackRate = 1;
+      }
+      Avatar.setTalking(false);
+      if (url) URL.revokeObjectURL(url);
+      App._bubbleHold(holdMs);
+    },
+
+    /* Speech playback for Turn: identical bookkeeping to playUrl, plus the
+       abort path so an interruption stops the audio mid-utterance and returns
+       immediately instead of waiting for the clip to end. */
+    playSpeech: function (url, signal, fx) {
+      var a = App.audio;
+      return new Promise(function (resolve) {
+        var done = false;
+        function clean() {
+          if (!a) return;
+          a.removeEventListener('ended', settle);
+          if (signal) signal.removeEventListener('abort', stop);
+        }
+        function settle() { if (done) return; done = true; clean(); resolve(); }
+        function stop() { App._stopAudio(url, 1600); settle(); }
+        if (!a) { settle(); return; }
+        a.addEventListener('ended', settle);
+        if (signal) {
+          if (signal.aborted) { stop(); return; }
+          signal.addEventListener('abort', stop);
+        }
+        App.playUrl(url, fx);
       });
     },
 
@@ -1319,12 +1384,7 @@
         : (Number(Config.section('app').volume) || 0.9);
       a.volume = Math.max(0, Math.min(1, base * ((fx && fx.gain) || 1)));
       a.playbackRate = (fx && fx.rate) || 1;
-      a.onended = function () {
-        a.playbackRate = 1;
-        Avatar.setTalking(false);
-        URL.revokeObjectURL(url);
-        App._bubbleHold(1600);   /* done talking → bubble steps aside */
-      };
+      a.onended = function () { App._stopAudio(url, 1600); };
       Avatar.setTalking(true);
       App._bubbleKeep();         /* stay put while she talks */
       a.play().catch(function () { Avatar.setTalking(false); });

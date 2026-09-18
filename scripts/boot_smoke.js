@@ -132,7 +132,7 @@ vm.createContext(sandbox);
 const load = (f) => vm.runInContext(fs.readFileSync(path.join(WEB, 'js', f), 'utf8'),
                                    sandbox, { filename: f });
 
-for (const f of ['util.js', 'config.js', 'i18n.js', 'api.js', 'memory.js',
+for (const f of ['util.js', 'config.js', 'i18n.js', 'api.js', 'turn.js', 'memory.js',
                  'game.js', 'quests.js', 'daily.js', 'world.js', 'audio.js',
                  'alarm.js', 'fx.js', 'nsfw.js', 'app.js']) {
   try { load(f); console.log('  loaded ' + f); }
