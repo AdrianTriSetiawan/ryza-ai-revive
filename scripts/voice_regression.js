@@ -90,7 +90,7 @@ sandbox.XMLHttpRequest = FakeXHR;
 vm.createContext(sandbox);
 const load = (f) => vm.runInContext(fs.readFileSync(path.join(WEB, f), 'utf8'),
                                    sandbox, { filename: f });
-for (const f of ['util.js', 'config.js', 'i18n.js', 'api.js', 'providers.js', 'turn.js', 'echo.js', 'voice.js']) {
+for (const f of ['util.js', 'config.js', 'i18n.js', 'api.js', 'providers.js', 'turn.js', 'echo.js', 'voice.js', 'npc.js']) {
   load(f);
 }
 const { Turn, Api, Config } = sandbox;
@@ -464,6 +464,83 @@ const sleep = () => new Promise((r) => setTimeout(r, 0));
   await new Promise((r) => setTimeout(r, 30));
   ok(bargeCalls === 0 && Voice._bargePending() === false,
      'G5 an onset while she is silent is ignored');
+
+  console.log('\n=== H. NPC speakers (npc.js) ===');
+  const Npc = sandbox.Npc;
+  /* npc.js reads World lazily, so a stub installed here is what it sees. */
+  sandbox.World = {
+    npcs: { npcs: [
+      { id: 'npc_ryza', name: 'ライザ', resolveOrder: 1,
+        bases: [{ stageId: 'stage_01_002_01', pct: 100 }], move: { area: 0, field: 0, stage: 0 } },
+      { id: 'npc_tao', name: 'タオ', note: '錬金術の先生', resolveOrder: 10,
+        bases: [{ stageId: 'stage_01_002_01', pct: 80 }], move: { area: 0, field: 0, stage: 0 } },
+      { id: 'npc_lent', name: 'レント', resolveOrder: 20,
+        bases: [{ stageId: 'stage_01_010_01', pct: 100 }], move: { area: 1, field: 1, stage: 0 } }
+    ] },
+    npcName: (id) => ({ npc_ryza: 'ライザ', npc_tao: 'タオ', npc_lent: 'レント' }[id] || id),
+    find: (sid) => ({
+      stage_01_002_01: { stageId: 'stage_01_002_01', areaId: 'area_01', fieldId: 'field_01' },
+      stage_01_010_01: { stageId: 'stage_01_010_01', areaId: 'area_01', fieldId: 'field_02' }
+    }[sid] || null),
+    placement: () => ({ npc_tao: 'stage_01_002_01', npc_lent: 'stage_01_010_01' })
+  };
+
+  /* H1: no prefix — one Ryza beat, exactly the old behaviour. This is the
+     assertion that keeps the protocol from changing replies that already work. */
+  const plain = Npc.split('おはよう、今日もいい天気だね');
+  ok(plain.length === 1 && plain[0].speaker === 'ryza' && /おはよう/.test(plain[0].text),
+     'H1 a reply with no speaker prefix is a single Ryza beat');
+
+  /* H2: an islander speaks, and is attributed to the right person. */
+  const mixed = Npc.split('莱莎：あ、タオ先生！\n角色[tao]：やあ、ちょうどいいところに。\n角色[tao]：調合の話をしよう。\n旁白：タオは道具を取り出した。');
+  ok(mixed.length === 4, 'H2 four beats parsed from a four-speaker reply');
+  ok(mixed[1].speaker === 'npc' && mixed[1].id === 'npc_tao' && mixed[1].name === 'タオ',
+     'H2 the short id resolves to the placement id and the localised name');
+  ok(mixed[2].id === 'npc_tao' && /調合/.test(mixed[2].text),
+     'H3 a second line from the same speaker stays their own beat');
+  ok(mixed[3].speaker === 'narrator' && /道具/.test(mixed[3].text),
+     'H3 narration is its own beat');
+
+  /* H4: only her words are spoken. */
+  ok(Npc.spokenText(mixed) === 'あ、タオ先生！',
+     'H4 only Ryza beats reach the synthesiser (NPC and narration are text only)');
+
+  /* H5: an unknown name keeps its line, but nobody else is blamed for it. */
+  const unk = Npc.split('角色[nobody]：はじめまして');
+  ok(unk.length === 1 && unk[0].speaker === 'npc' && unk[0].id === '' &&
+     unk[0].name === 'nobody' && /はじめまして/.test(unk[0].text),
+     'H5 an unknown speaker keeps the line but gets no id (nothing invented, nothing lost)');
+
+  /* H6: continuation lines belong to whoever spoke last. */
+  const cont = Npc.split('角色[tao]：一行目\n二行目\n三行目');
+  ok(cont.length === 1 && cont[0].text.split('\n').length === 3,
+     'H6 unprefixed lines continue the previous speaker');
+
+  /* H7: candidates come from the world data, are ranked by closeness, and Ryza
+     is never one of them. Being in the same AREA is enough to be a candidate —
+     the ranking is what decides who is worth mentioning. */
+  const cand = Npc.candidates('stage_01_002_01', 1, 6);
+  ok(cand.length === 2 && cand[0].id === 'npc_tao',
+     'H7 the islander scheduled into this very stage ranks first');
+  ok(cand[1] && cand[1].id === 'npc_lent' && cand[1].score < cand[0].score,
+     'H7 an islander with a base in the same area is a lower-ranked candidate');
+  ok(cand.filter((c) => c.id === 'npc_ryza').length === 0,
+     'H7 Ryza is never a candidate to speak as an NPC');
+  ok(Npc.candidates('stage_99_999_99', 1).length === 0,
+     'H7 an unknown stage yields no candidates');
+  ok(Npc._scoreOf(sandbox.World.npcs.npcs[1],
+                  { stageId: 'stage_01_002_01', areaId: 'area_01', fieldId: 'field_01' }, 1) === 8000,
+     'H7 an in-stage base scores pct x 100 (the exact-stage multiplier)');
+
+  /* H8: the prompt block carries the roster, the limits and the frequency. */
+  const blk = Npc.promptBlock({ stage: 'stage_01_002_01', day: 1 },
+                              { appCfg: { npcFrequency: 'frequent' } });
+  ok(/npc_tao/.test(blk), 'H8 the block names the candidates by their placement id');
+  ok(/角色\[ID\]：/.test(blk), 'H8 and states the protocol line the model must use');
+  ok(/2〜3ターン/.test(blk), 'H8 the chosen frequency reaches the prompt');
+  ok(/創作しない/.test(blk), 'H8 and it forbids inventing a setting it was not given');
+  ok(Npc.frequency({ npcFrequency: 'nonsense' }) === Npc.FREQ.normal,
+     'H9 an unknown frequency falls back to normal');
 
   console.log('\n--- 汇总 ---');
   clearTimeout(watchdog);

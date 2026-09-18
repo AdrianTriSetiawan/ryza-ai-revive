@@ -346,6 +346,15 @@
       bargeHint.textContent = T('settings.bargeInHint');
       bargeBox.appendChild(bargeHint);
       w.appendChild(bargeBox);
+      /* How often the other islanders join in. Four levels, each one a single
+         instruction line in the prompt (see the FREQ table in web/js/npc.js).
+         The roster itself comes from the world data, never from here. */
+      App._select(w, T('settings.npcFreq'), Config.section('app').npcFrequency || 'normal', [
+        { v: 'restrained', t: T('settings.npcFreq.restrained') },
+        { v: 'normal', t: T('settings.npcFreq.normal') },
+        { v: 'frequent', t: T('settings.npcFreq.frequent') },
+        { v: 'lively', t: T('settings.npcFreq.lively') }
+      ], function (v) { Config.set('app.npcFrequency', v); });
 
       /* ---------------- time passage (official drove it from AppServerClock) */
       App._title(w, T('settings.time'));

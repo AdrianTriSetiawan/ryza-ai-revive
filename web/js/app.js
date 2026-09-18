@@ -1224,6 +1224,12 @@
           return World.npcName(n.id) + (n.note ? '（' + n.note + '）' : '');
         }).join('、'));
       }
+      /* Facts above, roster + protocol below — the model cannot use a cast it
+         was never shown (web/js/npc.js). */
+      if (window.Npc && Npc.promptBlock) {
+        var npcBlock = Npc.promptBlock(st, { appCfg: Config.section('app') });
+        if (npcBlock) L.push('', npcBlock);
+      }
       return L.join('\n');
     },
 
@@ -1388,9 +1394,7 @@
             role: 'assistant',
             content: Api.formatHistoryReply(reply.text)
           });
-          App.typeBubble(reply.text, function () {
-            App.speakThen(reply.text, reply.emotion);
-          });
+          App._sayReply(reply);
 
           /* Talk-quests advance once per turn — if the LLM already reported
              quest progress through <state>, don't double-count it here. */
@@ -1411,6 +1415,43 @@
                                            : I18n.t('toast.llmFail') + e.message, true);
           App.showBubble('（……うまく聞こえなかった。もう一回言って？）');
         });
+    },
+
+    /* A reply can now carry more than one speaker (web/js/npc.js). Her lines are
+       typed and spoken; another islander's lines are text only, and they wait
+       until she has finished talking — otherwise the panel gets rewritten
+       mid-sentence while her voice is still going. */
+    _sayReply: function (reply) {
+      var beats = (window.Npc && Npc.split)
+        ? Npc.split(reply.text)
+        : [{ speaker: 'ryza', id: '', name: '', text: String(reply.text || '') }];
+      if (!beats.length) { App.typeBubble(''); return; }
+      var mine = (window.Npc && Npc.spokenText) ? Npc.spokenText(beats) : reply.text;
+      var others = beats.filter(function (b) { return b.speaker !== 'ryza'; });
+
+      var showOthers = function () {
+        var i = 0;
+        (function next() {
+          if (i >= others.length) return;
+          var b = others[i++];
+          var lab = Npc.labelFor(b);
+          App.typeBubble(lab ? lab + '：' + b.text : b.text, next);
+        })();
+      };
+
+      App.typeBubble(mine, function () {
+        if (mine) App.speakThen(mine, reply.emotion);
+        if (!others.length) return;
+        if (window.Turn && Turn.isSpeaking()) {
+          var off = Turn.on(function (ev) {
+            if (ev.type !== 'end' && ev.type !== 'cancel') return;
+            off();
+            showOthers();
+          });
+        } else {
+          showOthers();
+        }
+      });
     },
 
     speakThen: function (text, emotion) {
