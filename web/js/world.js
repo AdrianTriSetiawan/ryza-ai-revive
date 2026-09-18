@@ -16,7 +16,17 @@
     char: 'assets/world_map/ui/char_pin.svg'
   };
 
+  /* Host-injected notice sink (see scripts/layering_check.js): the map's own
+     view code must not reach into App just to say "locked". Inert by default
+     so world.js still loads standalone. */
+  var _notice = null;
+  function notify(msg, isErr) {
+    if (!_notice) return;
+    try { _notice(msg, !!isErr); } catch (e) { /* never break the map */ }
+  }
+
   var World = {
+    setNotice: function (fn) { _notice = (typeof fn === 'function') ? fn : null; },
     hierarchy: null,
     npcs: null,
     stageMap: null,
@@ -495,7 +505,7 @@
         }), World.mapAreaId, {
           onPick: function (it) {
             if (it.locked) {
-              if (window.App) App.toast(I18n.t('world.lockedToast'), true);
+              notify(I18n.t('world.lockedToast'), true);
               return;
             }
             World.mapLevel = 'fields';
@@ -600,7 +610,7 @@
 
     jumpArea: function (areaId, currentStageId, onPick) {
       if (World.locked(areaId)) {
-        if (window.App) App.toast(I18n.t('world.lockedToast'), true);
+        notify(I18n.t('world.lockedToast'), true);
         return;
       }
       World.mapLevel = 'fields';

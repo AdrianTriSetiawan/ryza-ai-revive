@@ -1182,12 +1182,10 @@
       });
       return s;
     },
-    /* Apply data-i18n attributes inside a subtree. */
-    apply: function (root) {
-      (root || document).querySelectorAll('[data-i18n]').forEach(function (el) {
-        el.textContent = I18n.t(el.getAttribute('data-i18n'));
-      });
-    }
+    /* NOTE: the DOM walk that used to live here as I18n.apply() moved to the UI
+       layer (App.applyI18n) — a string table has no business touching the DOM.
+       Everything above stays pure lookup/formatting so this module can run
+       headless. */
   };
 
   global.I18n = I18n;

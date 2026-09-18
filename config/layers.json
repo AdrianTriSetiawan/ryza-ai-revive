@@ -72,12 +72,12 @@
     "kbd": []
   },
   "coreForbidden": {
-    "_note": "core 层不允许出现的触达。localStorage 不在此列——持久化本来就是 core 的职责。",
+    "_note": "core 层不允许出现的触达。localStorage 不在此列——持久化本来就是 core 的职责。带 view:true 的只在‘自带 view 段’模块里豁免（见 ownsView）。",
     "patterns": [
-      { "re": "document\\.", "what": "DOM" },
-      { "re": "getElementById", "what": "DOM" },
-      { "re": "querySelector", "what": "DOM" },
-      { "re": "createElement", "what": "DOM" },
+      { "re": "document\\.", "what": "DOM", "view": true },
+      { "re": "getElementById", "what": "DOM", "view": true },
+      { "re": "querySelector", "what": "DOM", "view": true },
+      { "re": "createElement", "what": "DOM", "view": true },
       { "re": "requestAnimationFrame", "what": "渲染循环" },
       { "re": "\\bcanvas\\b", "what": "画布" },
       { "re": "new Audio\\(", "what": "音频元素" },
@@ -88,12 +88,22 @@
       { "re": "WebSocket", "what": "网络" }
     ]
   },
+  "ownsView": {
+    "_note": "这些 core 模块自带 view 段（算与画同文件），因此豁免 DOM 触达——它们仍然不得向上引用 ui/render/io（那由 check A 管）。真正的修法是把 view 段抽到 ui 层的 *_view 模块，但那要改掉这些模块的内部重绘（world 的层级导航会自调 render）与 boot_smoke 的调用面，属于独立一刀，列在后续。",
+    "modules": ["quests", "world", "daily"]
+  },
   "coreExceptions": {
     "_note": "已声明的 core 层例外：出现时打印为‘已声明’而不是违规。声明要写明为什么无害，否则就是在给耦合开绿灯。",
     "config": [
       {
         "re": "\\bfetch\\(",
         "why": "只用于 dev 水合 config/providers.json（scripts/serve.py 提供）。打包宿主一律 404，所以运行期不会走网络。真要干净就把这一段挪到 io 层的 dev 模块。"
+      }
+    ],
+    "world": [
+      {
+        "re": "\\bfetch\\(",
+        "why": "惰性加载自己的同源静态表（assets/world_map/*.json）。无凭据、无跨源、无副作用；要彻底干净可由 io 层注入数据再交给 world 纯计算，列在后续。"
       }
     ]
   },

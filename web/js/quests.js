@@ -103,6 +103,28 @@
     return (window.I18n && I18n.tf) ? I18n.tf(key, fb, map) : fb;
   }
 
+  /* ------------------------------------------------------- host-injected ports
+     Gameplay states intent; the host decides how it is presented. Injecting
+     these is what keeps this module from reaching into App / Sound / Fx / Api
+     (see scripts/layering_check.js) — and it is the same convention avatar.js
+     (setNotice/setVoiceSource) and memory.js (setLLM) use. All default to
+     inert, so the module still works standalone in the headless regressions. */
+  var _celebrate = null;   /* fn()               — reward feedback (se + confetti) */
+  var _present = null;     /* fn(res)            — outcome of an offline action */
+  var _generate = null;    /* fn(msgs, opts) -> Promise<{text}>  — LLM quest text */
+  var _notice = null;      /* fn(msg, isErr)     — progress/result toast */
+  var _navigate = null;    /* fn(viewId)         — "take me to that screen" */
+
+  function celebrate() {
+    if (!_celebrate) return;
+    try { _celebrate(); } catch (e) { /* presentation must never break gameplay */ }
+  }
+
+  function notify(msg, isErr) {
+    if (!_notice) return;
+    try { _notice(msg, !!isErr); } catch (e) { /* ditto */ }
+  }
+
   var Quests = {
     PRAISES: PRAISES,
     CHAIN: CHAIN,
@@ -155,7 +177,12 @@
         var q = Quests.startNo(9);
         return Promise.resolve(q);
       }
-      return Api.chat([], [
+      /* side quests need a text model; without the injected generator (or a
+         key) the local pool below is the honest fallback */
+      if (typeof _generate !== 'function') {
+        return Promise.resolve(Quests.startNo(9));
+      }
+      return _generate([], [
         'ライザと遊ぶRPGクエストを1つ生成して。',
         '次のJSONだけ出力（説明不要）:',
         '{"type":"talk|explore|gather|craft|battle|shop","title":"...","desc":"...","goal":"...","need":2,"cost":3}',
@@ -248,8 +275,7 @@
       Game.s.flags.quest_log = log;
       if (q.no > 8) Game.setFlag('side_done', Game.flag('side_done', 0) + 1);
       setQuest(q);
-      if (window.Sound) Sound.se('quest_clear');
-      if (window.Fx) Fx.burstConfetti();
+      celebrate();
       Quests.showClear(q);
       if (q.no === 8) Game.s.sailed = true;    /* sail quest → world unlock */
       Game.save();
@@ -437,6 +463,12 @@
     },
 
     /* ------------------------------------------------------------- sheet UI */
+    setCelebrate: function (fn) { _celebrate = (typeof fn === 'function') ? fn : null; },
+    setPresenter: function (fn) { _present = (typeof fn === 'function') ? fn : null; },
+    setGenerator: function (fn) { _generate = (typeof fn === 'function') ? fn : null; },
+    setNotice: function (fn) { _notice = (typeof fn === 'function') ? fn : null; },
+    setNavigator: function (fn) { _navigate = (typeof fn === 'function') ? fn : null; },
+
     render: function (root, hooks) {
       if (!root) return;
       root.innerHTML = '';
@@ -474,14 +506,9 @@
         act.onclick = function () {
           var res = Quests.doAction(q.type, hooks || {});
           Quests.refundAction(res);
-          if (res && res.sail && window.App) App._onSailed();
-          if (window.App && res && res.line) {
-            if (res.faint) App._showFaint();
-            else App.showBubble(res.line);
-            if (res.ok && window.Sound) Sound.se('quest_clear');
-            if (!res.ok && !res.faint && window.Sound) Sound.se('touch_start');
-          }
-          if (window.App && App.refreshHud) App.refreshHud();
+          /* Presenting the outcome (sailing, faint, bubble, se, HUD) is the
+             host's job — it owns the render layer. See the ports above. */
+          if (res && _present) { try { _present(res); } catch (e) { /* never break gameplay */ } }
           Quests.render(root, hooks);
           if (Quests.pendingAdvance() && hooks && hooks.cleared) hooks.cleared(nowQuest());
         };
@@ -493,9 +520,9 @@
         gen.textContent = I18n.t('quest.auto');
         gen.onclick = function () {
           var hasKey = !!(window.Config && Config.section('llm').apiKey);
-          if (hasKey && window.App) App.toast(I18n.t('toast.questGen'));
+          if (hasKey) notify(I18n.t('toast.questGen'));
           Quests.generate(hasKey).then(function () {
-            if (window.App) { App.toast(I18n.t('quest.newOk') + '「' + Quests.titleOf(Quests.active()) + '」'); }
+            notify(I18n.t('quest.newOk') + '「' + Quests.titleOf(Quests.active()) + '」');
             Quests.render(root, hooks);
           });
         };
@@ -613,7 +640,7 @@
         tile.onclick = function () {
           if (tile.classList.contains('locked')) return;
           var dest = { talk: 'talk', map: 'world', alarm: 'alarm', skin: 'skin', quest: 'quest' };
-          if (window.App) App.showView(dest[s.id] || 'talk');
+          if (_navigate) { try { _navigate(dest[s.id] || 'talk'); } catch (e) { /* ditto */ } }
         };
         path.appendChild(tile);
       });

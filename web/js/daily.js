@@ -38,7 +38,16 @@
     return d === 0 ? 6 : d - 1;
   }
 
+  /* ------------------------------------------------------ host-injected ports
+     Same convention as quests.js / avatar.js / memory.js: this module states
+     intent, the host presents it. Nothing here reaches into App / Sound / Fx. */
+  var _celebrate = null;   /* fn()     — reward feedback (se + confetti) */
+  var _present = null;     /* fn(res)  — claim outcome (toast + HUD refresh) */
+
   var Daily = {
+    setCelebrate: function (fn) { _celebrate = (typeof fn === 'function') ? fn : null; },
+    setPresenter: function (fn) { _present = (typeof fn === 'function') ? fn : null; },
+
     s: null,
 
     load: function () {
@@ -98,8 +107,7 @@
       if (Daily.s.claimedDays.indexOf(idx) === -1) Daily.s.claimedDays.push(idx);
       Daily.save();
       Game.remember('連続ログイン ' + Daily.streak() + ' 日目：' + msgs.join('、'));
-      if (window.Sound) Sound.se('quest_clear');
-      if (window.Fx) Fx.burstConfetti();
+      if (_celebrate) { try { _celebrate(); } catch (e) { /* never break the claim */ } }
       return { ok: true, day: idx + 1, text: msgs.join('、') };
     },
 
@@ -148,11 +156,8 @@
       btn.disabled = !Daily.available();
       btn.onclick = function () {
         var res = Daily.claim();
-        if (!res.ok) { if (window.App) App.toast(I18n.t('dl.already')); return; }
-        if (window.App) {
-          App.toast(I18n.t('dl.got') + res.text);
-          if (App.refreshHud) App.refreshHud();
-        }
+        if (_present) { try { _present(res); } catch (e) { /* never break the claim */ } }
+        if (!res.ok) return;
         Daily.render(root);
       };
       root.appendChild(btn);

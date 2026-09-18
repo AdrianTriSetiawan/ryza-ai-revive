@@ -86,6 +86,14 @@
        to hide: its art is split far_bg (ends at world 629) + floor
        (starts at −1064) with a 1693u gap; every other scene ships one
        full-coverage backdrop quad. */
+    /* Applies data-i18n attributes in a subtree. Lives here (not in i18n.js)
+       because walking the DOM is presentation; i18n.js stays a pure table. */
+    applyI18n: function (root) {
+      (root || document).querySelectorAll('[data-i18n]').forEach(function (el) {
+        el.textContent = I18n.t(el.getAttribute('data-i18n'));
+      });
+    },
+
     _syncPanelFrac: function () {
       if (!window.Avatar || Avatar.panelFraction()) return;   // measure once
       var vh = window.innerHeight || 1;
@@ -114,7 +122,7 @@
     /* -------------------------------------------------------------- boot */
     init: function () {
       I18n.setLang(Config.section('app').lang || 'zh');
-      I18n.apply(document);
+      App.applyI18n(document);
       var inpEl = document.getElementById('input');
       if (inpEl) inpEl.placeholder = I18n.tc('input.hint', inpEl.placeholder);
       document.getElementById('overlay-title').classList.remove('hidden');
@@ -153,6 +161,45 @@
            reference to the transport layer). */
         if (Memory.setLLM) {
           Memory.setLLM(function (sys, body, opts) { return Api.complete(sys, body, opts); });
+        }
+        /* Presentation ports for the feature modules. Gameplay states intent;
+           this one place decides how it sounds/looks, so quests / daily /
+           world / alarm never reference App, Sound or Fx themselves. */
+        if (World.setNotice) World.setNotice(App.toast);
+        if (Quests.setNotice) Quests.setNotice(App.toast);
+        if (Quests.setNavigator) Quests.setNavigator(function (view) { App.showView(view); });
+        if (Alarm.setEditor) Alarm.setEditor(function (id) { App._editAlarm(id); });
+        var celebrate = function () {
+          if (window.Sound) Sound.se('quest_clear');
+          if (window.Fx) Fx.burstConfetti();
+        };
+        if (Quests.setCelebrate) Quests.setCelebrate(celebrate);
+        if (Daily.setCelebrate) Daily.setCelebrate(celebrate);
+        if (Quests.setGenerator) {
+          Quests.setGenerator(function (history, body, opts) { return Api.chat(history, body, opts); });
+        }
+        if (Quests.setPresenter) {
+          Quests.setPresenter(function (res) {
+            if (!res) return;
+            if (res.sail) App._onSailed();
+            if (res.line) {
+              if (res.faint) App._showFaint();
+              else App.showBubble(res.line);
+              if (window.Sound) {
+                if (res.ok) Sound.se('quest_clear');
+                else if (!res.faint) Sound.se('touch_start');
+              }
+            }
+            App.refreshHud();
+          });
+        }
+        if (Daily.setPresenter) {
+          Daily.setPresenter(function (res) {
+            if (!res) return;
+            if (!res.ok) { App.toast(I18n.t('dl.already')); return; }
+            App.toast(I18n.t('dl.got') + res.text);
+            App.refreshHud();
+          });
         }
         Avatar.init(function () {
           App._loadSceneFor(st.stage, st.tod);
@@ -1092,7 +1139,7 @@
         b.onclick = function () {
           Config.set('app.lang', item.id);
           I18n.setLang(item.id);
-          I18n.apply(document);
+          App.applyI18n(document);
           App._relocalize();
           sheet.classList.add('hidden');
         };
@@ -1498,7 +1545,7 @@
       document.getElementById('modal-cancel').textContent = I18n.t('form.cancel');
       body.innerHTML = '';
       (opts.build || function () {})(body);
-      I18n.apply(form);
+      App.applyI18n(form);
       scrim.classList.remove('hidden');
 
       var cancel = function () {
@@ -2196,7 +2243,7 @@
       var langOpts = Langs.ALL.map(function (o) { return { v: o.v, t: T(o.k) }; });
       App._select(w, T('settings.lang.ui'), Config.section('app').lang, langOpts,
         function (v) {
-          Config.set('app.lang', v); I18n.setLang(v); I18n.apply(document);
+          Config.set('app.lang', v); I18n.setLang(v); App.applyI18n(document);
           App._relocalize();
         });
       App._select(w, T('settings.lang.voice'), (Config.section('voice') || {}).lang || 'auto', langOpts,
@@ -2518,7 +2565,7 @@
       App.buildCharaForm();
       App.renderSkins();
       I18n.setLang(Config.section('app').lang);
-      I18n.apply(document);
+      App.applyI18n(document);
     },
 
     _renderSlots: function (wrap) {

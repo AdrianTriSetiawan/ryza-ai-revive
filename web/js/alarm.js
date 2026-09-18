@@ -17,7 +17,12 @@
     return Util.todForVoice(h);
   }
 
+  /* Host-injected editor opener: the alarm list's own view code must not reach
+     into App (see scripts/layering_check.js). Inert by default. */
+  var _edit = null;
+
   var Alarm = {
+    setEditor: function (fn) { _edit = (typeof fn === 'function') ? fn : null; },
     items: [],
     _timer: null,
     _fired: {},
@@ -138,7 +143,7 @@
             clip && onPlay && onPlay(clip);
           };
           el.querySelector('.t-edit').onclick = function () {
-            if (App && App._editAlarm) App._editAlarm(a.id);
+            if (_edit) _edit(a.id);
           };
           el.querySelector('.t-toggle').onclick = function () {
             Alarm.toggle(a.id); Alarm.render(root, onPlay);

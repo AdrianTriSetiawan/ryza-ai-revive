@@ -24,7 +24,7 @@ WEB = ROOT / "web"
 PROVIDERS = ROOT / "config" / "providers.json"
 PORT = 8765
 # Cloudflare (opencode.ai etc.) returns 1010 for the default Python-urllib UA.
-UA = "RyzaChat/1.2.13"
+UA = "RyzaChat/1.2.15"
 
 
 class Server(ThreadingHTTPServer):

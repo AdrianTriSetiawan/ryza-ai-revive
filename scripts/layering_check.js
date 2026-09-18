@@ -182,19 +182,24 @@ if (hub.length) console.log('  说明: 枢纽环不计入违规，但计入‘�
 console.log('\n=== C. core 层纯度（DOM / 画布 / 网络） ===');
 let cViolations = 0;
 let cDeclared = 0;
+let cViewExempt = 0;
 const corePatterns = cfg.coreForbidden.patterns;
 const coreExceptions = cfg.coreExceptions || {};
+const ownsView = (cfg.ownsView && cfg.ownsView.modules) || [];
 moduleNames.forEach(function (m) {
   if (layerOf(m) !== 'core') return;
   if (m === '_note') return;
   const src = stripComments(fs.readFileSync(fileOf(m), 'utf8'));
   const exs = (coreExceptions[m] || []);
+  const isView = ownsView.indexOf(m) >= 0;
   const hits = [];
   corePatterns.forEach(function (p) {
     const c = (src.match(new RegExp(p.re, 'g')) || []).length;
     if (!c) return;
     const ex = exs.find(function (e) { return e.re === p.re; });
     if (ex) { cDeclared++; console.log('  已声明 ' + m + ' 使用 ' + p.what + '（' + p.re + '）：' + ex.why); return; }
+    /* a module that owns its view section may build DOM itself, but nothing else */
+    if (isView && p.view) { cViewExempt++; return; }
     hits.push(p.what + '(' + p.re + ')×' + c);
   });
   if (hits.length) {
@@ -202,6 +207,9 @@ moduleNames.forEach(function (m) {
     cViolations++;
   }
 });
+if (ownsView.length) {
+  console.log('  自带 view 段（豁免 DOM，仍不许向上引用）: ' + ownsView.join(', '));
+}
 if (!cViolations) console.log('  PASS core 层无未声明触达');
 
 /* ------------------------------------------------- D: three-host contract */
@@ -247,7 +255,7 @@ console.log('  越层引用 ' + aViolations + ' | 未声明的硬环 ' + hard.le
             ' | core 未声明触达 ' + cViolations + ' | 三端契约 ' + dViolations +
             ' | 版本字面量 ' + eViolations);
 console.log('  不计入违规: 已声明环 ' + declared.length + ' 条、已声明 core 例外 ' + cDeclared +
-            ' 项、枢纽环 ' + hub.length + ' 条（待拆）');
+            ' 项、自带 view 段豁免 ' + cViewExempt + ' 项、枢纽环 ' + hub.length + ' 条（待拆）');
 if (plannedMissing.length) {
   console.log('  已声明但尚未创建（计划中的模块，本次跳过）: ' + plannedMissing.join(', '));
 }
