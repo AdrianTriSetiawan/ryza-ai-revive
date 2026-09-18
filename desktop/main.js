@@ -72,7 +72,7 @@ async function proxyRequest(request, targetUrl) {
   if (!String(targetUrl || '').startsWith('https://')) {
     return jsonError(400, 'proxy target must be https');
   }
-  const headers = { 'User-Agent': 'RyzaChat/1.2.15' };
+  const headers = { 'User-Agent': 'RyzaChat/1.2.16' };
   const ct = request.headers.get('content-type');
   const auth = request.headers.get('authorization');
   const apiKey = request.headers.get('api-key');
