@@ -411,6 +411,60 @@ const sleep = () => new Promise((r) => setTimeout(r, 0));
      'F9 a recogniser that keeps ending at once is not restarted forever');
   ok(notices.indexOf('mic.unstable') >= 0, 'F9 and the player is told why it stopped');
 
+  console.log('\n=== G. onset barge-in (opt-in) ===');
+  /* A fresh recogniser stub whose onset/end events the test drives by hand. */
+  Voice._reset();
+  Echo.reset();
+  Voice.setNotice((code) => notices.push(code));
+  let bargeCalls = 0;
+  const bargeOn = () => { bargeCalls++; };
+  Voice.BARGE_CONFIRM_MS = 5;          /* keep the regression quick */
+  Voice.FIRST_SENTENCE_MS = 700;
+  now = 900000;
+
+  /* G1: disabled means disabled — the onset event must not do anything. */
+  Voice.setBargeIn(null);
+  Voice.start();
+  const rb = lastRec;
+  speakingNow = true;
+  Voice.noteAssistantSpeechStarted();
+  now += 1000;                         /* past the first-sentence window */
+  rb.onspeechstart();
+  await new Promise((r) => setTimeout(r, 30));
+  ok(bargeCalls === 0, 'G1 with barge-in off an onset never interrupts');
+
+  /* G2: armed, but her opening moments are protected. */
+  Voice.setBargeIn(bargeOn);
+  Voice.noteAssistantSpeechStarted();  /* she just started this line */
+  rb.onspeechstart();
+  await new Promise((r) => setTimeout(r, 30));
+  ok(bargeCalls === 0, 'G2 an onset in her first moments does not cut her off');
+
+  /* G3: a real barge-in fires once the confirmation window passes. */
+  now += Voice.FIRST_SENTENCE_MS + 50;
+  rb.onspeechstart();
+  ok(Voice._bargePending() === true, 'G3 an onset arms a pending barge-in, not an instant cut');
+  await new Promise((r) => setTimeout(r, 30));
+  ok(bargeCalls === 1, 'G3 the pending barge-in fires after the confirmation window');
+
+  /* G4: speech that stops before confirmation was a cough, not a turn. */
+  bargeCalls = 0;
+  now += 1000;
+  rb.onspeechstart();
+  rb.onspeechend();                    /* ends before the timer fires */
+  await new Promise((r) => setTimeout(r, 30));
+  ok(bargeCalls === 0 && Voice._bargePending() === false,
+     'G4 an onset that ends before confirmation is discarded (cough, chair, door)');
+
+  /* G5: nothing to interrupt → nothing happens. */
+  bargeCalls = 0;
+  speakingNow = false;
+  now += 1000;
+  rb.onspeechstart();
+  await new Promise((r) => setTimeout(r, 30));
+  ok(bargeCalls === 0 && Voice._bargePending() === false,
+     'G5 an onset while she is silent is ignored');
+
   console.log('\n--- 汇总 ---');
   clearTimeout(watchdog);
   console.log(failures ? '结果: FAIL (' + failures + ' 项)' : '结果: OK');

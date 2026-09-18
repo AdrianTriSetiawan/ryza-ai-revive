@@ -39,12 +39,15 @@
   var MAX_RAPID_RESTARTS = 5;
 
   var _sink = null, _speaker = null, _notice = null, _lang = null, _echo = null;
+  var _barge = null;        /* fn() — performs the interruption; null = disabled */
 
   var _want = false;        /* the player asked for the mic to be on */
   var _rec = null;
   var _suppressedUntil = 0;
   var _restarts = 0;
   var _startedAt = 0;
+  var _speakStartedAt = 0;
+  var _bargeTimer = null;
   var _now = function () { return Date.now(); };
 
   function emit(text) { if (_sink) { try { _sink(text); } catch (e) {} } }
@@ -102,6 +105,13 @@
       }
       notice('mic.error:' + code, true);
     };
+    /* Onset barge-in. The recogniser's own speech-start event is a real onset
+       signal, so this needs no VAD model — but it cannot tell her voice from
+       the player's, which is why it is opt-in (see the note at the bottom of
+       this file). Two guards keep it from firing on noise or on her own
+       opening syllable. */
+    rec.onspeechstart = function () { Voice._onSpeechStart(); };
+    rec.onspeechend = function () { Voice._cancelBarge(); };
     rec.onend = function () {
       if (!_want) { Voice._emitState(); return; }
       /* Web Speech ends on its own after silence; keep listening unless that
@@ -122,6 +132,14 @@
   var Voice = {
     COOLDOWN_MS: COOLDOWN_MS,
     MAX_RAPID_RESTARTS: MAX_RAPID_RESTARTS,
+    /* Speech onset is not speech: a cough, a chair, a door all fire it. Wait
+       this long and require her to still be talking before cutting in
+       (N.E.K.O.'s confirm_speech_ms). */
+    BARGE_CONFIRM_MS: 240,
+    /* Her first moments are protected: the start of her own sentence is the
+       loudest thing in the room, and on a setup without echo cancellation it
+       is the most likely thing to be mistaken for the player. */
+    FIRST_SENTENCE_MS: 700,
 
     /* ------------------------------------------------------------- ports */
     setSink: function (fn) { _sink = (typeof fn === 'function') ? fn : null; },
@@ -130,6 +148,9 @@
     setLang: function (fn) { _lang = (typeof fn === 'function') ? fn : null; },
     setEcho: function (mod) { _echo = mod || null; },
     setClock: function (fn) { _now = (typeof fn === 'function') ? fn : _now; },
+    /* Injecting the interrupt keeps this module ignorant of turns: App wires it
+       to Turn.interrupt. Passing null disables barge-in entirely. */
+    setBargeIn: function (fn) { _barge = (typeof fn === 'function') ? fn : null; },
 
     /* ------------------------------------------------------------- state */
     available: function () { return !!Ctor(); },
@@ -166,9 +187,15 @@
        this from its Turn subscription — the turn layer must not know about
        microphones, and this module must not know about turns. */
     noteAssistantSpeechEnded: function () {
+      Voice._cancelBarge();
       if (_want) armCooldown();
       Voice._emitState();
     },
+
+    /* Her line started — needed to protect her opening moments (see
+       FIRST_SENTENCE_MS). */
+    noteAssistantSpeechStarted: function () { _speakStartedAt = _now(); },
+    selfSpeechFor: function () { return _speakStartedAt ? (_now() - _speakStartedAt) : 0; },
 
     /* Block input for a while (UI asking, or a manual mute window). */
     suppressFor: function (ms) {
@@ -181,6 +208,26 @@
        a real microphone, and a recogniser stub has no business re-implementing
        it. */
     _accept: accept,
+
+    /* Onset seen. Only cut in when there is something to cut into, her opening
+       moments are over, and the onset survives the confirmation window. */
+    _onSpeechStart: function () {
+      if (!_barge) return;
+      if (!speaking()) return;
+      if (Voice.selfSpeechFor() < Voice.FIRST_SENTENCE_MS) return;
+      if (_bargeTimer) return;
+      _bargeTimer = setTimeout(function () {
+        _bargeTimer = null;
+        if (!speaking()) return;          /* she finished first — nothing to do */
+        try { _barge(); } catch (e) { /* an interrupt must never break the mic */ }
+      }, Voice.BARGE_CONFIRM_MS);
+    },
+    _cancelBarge: function () {
+      if (!_bargeTimer) return;
+      clearTimeout(_bargeTimer);
+      _bargeTimer = null;
+    },
+    _bargePending: function () { return !!_bargeTimer; },
     _stateListeners: [],
     _emitState: function () {
       Voice._stateListeners.slice().forEach(function (f) {
@@ -202,3 +249,19 @@
 
   global.Voice = Voice;
 })(typeof window !== 'undefined' ? window : globalThis);
+
+/* Why onset barge-in is opt-in (app.bargeIn, default off)
+   ------------------------------------------------------
+   The recogniser's speech-start event cannot tell the player from her. On a
+   setup where the microphone hears the loudspeaker, her own voice fires the
+   onset and she cuts herself off mid-sentence — the failure mode is worse than
+   not having the feature, and it is invisible in a screenshot.
+
+   Two things make it safe enough to offer: browser echo cancellation (on by
+   default in getUserMedia) and the guards above. Neither is a guarantee. The
+   complete fix is a playback-level comparison — only treat an onset as the
+   player when the room is louder than the current playback leakage — which
+   needs the level port that avatar._voiceDb already computes, and a real VAD
+   (Silero via onnxruntime-web) for hosts whose recogniser has no onset event
+   at all. Both are listed as follow-ups rather than half-done here.
+*/

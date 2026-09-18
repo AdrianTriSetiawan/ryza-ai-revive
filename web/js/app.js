@@ -250,14 +250,21 @@
             }
           });
           Voice.setSink(function (text) { App._onVoiceTranscript(text); });
+          /* Onset barge-in, off by default: the recogniser cannot tell her
+             voice from the player's, so on a setup without echo cancellation
+             she would cut herself off. App wires it only when the player asked
+             for it (settings → app.bargeIn). */
+          Voice.setBargeIn(null);
           if (window.Turn) {
             Turn.on(function (ev) {
               /* She stopped: keep the microphone deaf for a moment (the tail of
                  her audio is still in the room and in the recogniser buffer). */
               if (ev.type === 'end' || ev.type === 'cancel') Voice.noteAssistantSpeechEnded();
+              if (ev.type === 'speak') Voice.noteAssistantSpeechStarted();
               if (ev.type === 'state' || ev.type === 'end' || ev.type === 'cancel') App._syncMic();
             });
           }
+          App._syncBargeIn();
         }
         App._setupMic();
         Avatar.init(function () {
@@ -927,6 +934,16 @@
       btn.classList.toggle('listening', on);
       btn.classList.toggle('blocked', blocked);
       btn.title = I18n.t(on ? 'mic.stop' : 'mic.start');
+    },
+
+    /* Barge-in is armed only when the player turned it on. Kept in one place so
+       the settings switch and boot agree. */
+    _syncBargeIn: function () {
+      if (!window.Voice || !Voice.setBargeIn) return;
+      var on = !!Config.section('app').bargeIn;
+      Voice.setBargeIn(on ? function () {
+        if (window.Turn) Turn.interrupt('user-barge-in');
+      } : null);
     },
 
     /* An accepted transcript — Echo and the half-duplex gate already had their
@@ -2470,6 +2487,17 @@
         });
       App._switch(w, T('settings.autoSend'), Config.section('app').autoSend,
         function (v) { Config.set('app.autoSend', !!v); });
+      App._switch(w, T('settings.bargeIn'), !!Config.section('app').bargeIn,
+        function (v) { Config.set('app.bargeIn', !!v); App._syncBargeIn(); });
+      /* The caveat is the reason this is off by default, so it has to be
+         readable in the UI, not only in the source. */
+      var bargeBox = document.createElement('div');
+      bargeBox.className = 'field';
+      var bargeHint = document.createElement('div');
+      bargeHint.className = 'hint';
+      bargeHint.textContent = T('settings.bargeInHint');
+      bargeBox.appendChild(bargeHint);
+      w.appendChild(bargeBox);
 
       /* ---------------- time passage (official drove it from AppServerClock) */
       App._title(w, T('settings.time'));
