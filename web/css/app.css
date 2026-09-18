@@ -287,6 +287,19 @@ select{background:rgba(20,14,18,.9);border:1px solid var(--line);border-radius:9
   outline:none;user-select:text}
 #btn-newtalk{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;flex:0 0 auto}
 #btn-newtalk img{width:17px;height:17px;filter:invert(80%) sepia(30%) saturate(500%) hue-rotate(330deg)}
+/* Voice input. Uses the pack's own voicetoggle.svg (no invented artwork), and
+   is the one control whose state must be readable at a glance: listening pulses,
+   blocked (she is talking / cooldown) goes quiet rather than disappearing. */
+.mic-btn{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;flex:0 0 auto;
+  border:1px solid var(--line);background:none;padding:0}
+.mic-btn img{width:17px;height:17px;filter:invert(80%) sepia(30%) saturate(500%) hue-rotate(330deg)}
+.mic-btn.listening{border-color:var(--gold);background:rgba(232,180,92,.16);
+  animation:mic-pulse 1.6s ease-in-out infinite}
+.mic-btn.blocked{opacity:.35}
+.mic-btn.hidden{display:none}
+@keyframes mic-pulse{0%,100%{box-shadow:0 0 0 0 rgba(232,180,92,.30)}
+  50%{box-shadow:0 0 0 5px rgba(232,180,92,0)}}
+@media (prefers-reduced-motion:reduce){.mic-btn.listening{animation:none}}
 .send-btn{width:46px;height:46px;background:linear-gradient(160deg,#ff9a3d,#e08a2f);
   border-color:transparent;box-shadow:0 3px 12px rgba(255,150,60,.35)}
 .send-btn img{filter:none}

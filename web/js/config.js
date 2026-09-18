@@ -117,6 +117,9 @@
       fullscreen: false,
       rim: true,
       showBubble: true,              // talk bubbles over the stage (auto-fade)
+      stt: 'off',                    // off | webSpeech — microphone input (browser recogniser)
+      autoSend: false,               // send an accepted transcript without a tap
+      autoSendDelay: 2000,           // ms before auto-send once the mic goes quiet
       timeMode: 'real',              // real=墙钟(LLM不可拨) | flow=游戏钟(LLM可拨) | manual=🌤
       flowSpeed: 60,                 // flow: in-game minutes per real minute (60 ⇒ 1 game hr / real min)
       cheat: false                   // 作弊：体力 + 金币无限（地图/任务不改）

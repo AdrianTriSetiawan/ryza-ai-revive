@@ -90,7 +90,7 @@ sandbox.XMLHttpRequest = FakeXHR;
 vm.createContext(sandbox);
 const load = (f) => vm.runInContext(fs.readFileSync(path.join(WEB, f), 'utf8'),
                                    sandbox, { filename: f });
-for (const f of ['util.js', 'config.js', 'i18n.js', 'api.js', 'providers.js', 'turn.js']) {
+for (const f of ['util.js', 'config.js', 'i18n.js', 'api.js', 'providers.js', 'turn.js', 'echo.js', 'voice.js']) {
   load(f);
 }
 const { Turn, Api, Config } = sandbox;
@@ -328,6 +328,88 @@ const sleep = () => new Promise((r) => setTimeout(r, 0));
     .catch((e) => { localErr = e; });
   ok(localErr && localErr.hint === 'local-engine' && /连不上本地引擎/.test(localErr.message),
      'E7 an unreachable engine names the likely cause (not running / no cross-origin)');
+
+  console.log('\n=== F. voice input gate (echo.js + voice.js) ===');
+  const Echo = sandbox.Echo, Voice = sandbox.Voice;
+
+  /* F1-F4: the text-level echo guard, with an explicit clock. This is what
+     catches her own words when the platform's echo canceller cannot. */
+  Echo.reset();
+  const t0 = 1000000;
+  Echo.remember('今日はいい天気だね、一緒に冒険に行こう', t0);
+  ok(Echo._lcsRatio('abc', 'abc') === 1, 'F1 the similarity metric is a proper ratio');
+  ok(Echo.looksLikeEcho('今日はいい天気だね、一緒に冒険に行こう', t0 + 100) === true,
+     'F1 her own line, heard back, is recognised as an echo');
+  ok(Echo.looksLikeEcho('まったく別のことを言ってみるよ', t0 + 100) === false,
+     'F2 an unrelated line is not treated as an echo');
+  ok(Echo.looksLikeEcho('うん', t0 + 100) === false,
+     'F3 a short utterance is never matched (too little signal)');
+  ok(Echo.looksLikeEcho('今日はいい天気だね、一緒に冒険に行こう',
+                        t0 + Echo.LOOKBACK_MS + 1) === false,
+     'F4 the lookback window expires');
+
+  /* F5-F9: the microphone gate, with a stubbed recogniser and a manual clock. */
+  let lastRec = null;
+  function FakeRec() { this.continuous = false; this.interimResults = false; lastRec = this; }
+  FakeRec.prototype.start = function () { lastRec = this; this.starts = (this.starts || 0) + 1; };
+  FakeRec.prototype.stop = function () { this.stopped = true; if (this.onend) this.onend(); };
+  sandbox.SpeechRecognition = FakeRec;
+
+  /* The recogniser reports a final result with the shape the real API uses:
+     results[i] is a result, results[i][0] is an alternative with .transcript
+     and the result carries .isFinal. */
+  function deliver(rec, text) {
+    const result = [{ transcript: text }];
+    result.isFinal = true;
+    rec.onresult({ resultIndex: 0, results: [result] });
+  }
+
+  let now = 500000, speakingNow = false;
+  const heard = [], notices = [];
+  Voice.setClock(() => now);
+  Voice.setEcho(Echo);
+  Voice.setSpeaker(() => speakingNow);
+  Voice.setSink((text) => heard.push(text));
+  Voice.setNotice((code) => notices.push(code));
+  Voice.setLang(() => 'ja');
+  Voice._reset();
+  Echo.reset();
+
+  ok(Voice.available() === true, 'F5 the recogniser is detected');
+  ok(Voice.start() === true && Voice.isListening() === true, 'F5 the mic can be turned on');
+  const rec = lastRec;
+  ok(rec && rec.continuous === true && rec.lang === 'ja-JP',
+     'F5 configured continuous, with a BCP-47 tag mapped from the language slot');
+
+  /* Her speech in the room beats everything else. */
+  speakingNow = true;
+  deliver(rec, 'おなじことを繰り返してしまう');
+  ok(heard.length === 0, 'F6 nothing is forwarded while she is speaking');
+  ok(Voice.suppressedUntil() > now, 'F6 and the cooldown is armed');
+
+  /* ...and it stays armed for the cooldown window. */
+  speakingNow = false;
+  deliver(rec, 'まだ おなじ ことば');
+  ok(heard.length === 0, 'F7 the microphone stays deaf during the cooldown');
+  now += Voice.COOLDOWN_MS + 1;
+  deliver(rec, 'もう いけるはず');
+  ok(heard.length === 1 && heard[0] === 'もう いけるはず',
+     'F7 after the cooldown a player line gets through');
+
+  /* The text-level guard catches what an echo canceller cannot. */
+  Echo.remember('さっき言ったことばを そのまま 繰り返すよ', now);
+  deliver(rec, 'さっき言ったことばを そのまま 繰り返すよ');
+  ok(heard.length === 1, 'F8 a transcript identical to her own recent line is dropped');
+
+  /* A recogniser that dies instantly, over and over, must give up, not spin. */
+  notices.length = 0;
+  Voice._reset();
+  Voice.start();
+  const rec2 = lastRec;
+  for (let i = 0; i < Voice.MAX_RAPID_RESTARTS + 2; i++) rec2.onend();
+  ok(Voice.isListening() === false,
+     'F9 a recogniser that keeps ending at once is not restarted forever');
+  ok(notices.indexOf('mic.unstable') >= 0, 'F9 and the player is told why it stopped');
 
   console.log('\n--- 汇总 ---');
   clearTimeout(watchdog);

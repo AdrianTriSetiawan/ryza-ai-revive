@@ -230,6 +230,36 @@
                   : I18n.t('toast.ttsFail') + msg, true);
           });
         }
+        /* Voice input. The microphone needs three things only this layer has:
+           whether she is speaking (Turn), whose words came back (Echo), and
+           where an accepted transcript goes — this layer decides between
+           filling the box and sending it. */
+        if (window.Voice) {
+          Voice.setEcho(window.Echo);
+          Voice.setSpeaker(function () { return !!(window.Turn && Turn.isSpeaking()); });
+          Voice.setLang(function () {
+            return (window.Langs && Langs.voice && Langs.voice())
+                || (window.Langs && Langs.llm && Langs.llm()) || 'ja';
+          });
+          Voice.setNotice(function (code, isErr) {
+            var c = String(code || '');
+            if (c === 'mic.denied' || c === 'mic.unsupported' || c === 'mic.unstable') {
+              App.toast(I18n.t(c), true);
+            } else {
+              App.toast(I18n.t('mic.failed') + c.replace(/^mic\.error:/, ''), !!isErr);
+            }
+          });
+          Voice.setSink(function (text) { App._onVoiceTranscript(text); });
+          if (window.Turn) {
+            Turn.on(function (ev) {
+              /* She stopped: keep the microphone deaf for a moment (the tail of
+                 her audio is still in the room and in the recogniser buffer). */
+              if (ev.type === 'end' || ev.type === 'cancel') Voice.noteAssistantSpeechEnded();
+              if (ev.type === 'state' || ev.type === 'end' || ev.type === 'cancel') App._syncMic();
+            });
+          }
+        }
+        App._setupMic();
         Avatar.init(function () {
           App._loadSceneFor(st.stage, st.tod);
           App._tickTime();          // adopt the wall/flow clock once the scene is up
@@ -862,6 +892,61 @@
         root.appendChild(row);
       });
       sheet.classList.remove('hidden');
+    },
+
+    /* ---------------------------------------------------------- voice input
+       Hidden unless the host has a recogniser, and its state has to be honest:
+       lit = listening, dimmed = she is talking, so it is visible WHY nothing is
+       being heard instead of the mic silently swallowing words. */
+    _setupMic: function () {
+      var btn = document.getElementById('btn-mic');
+      if (!btn) return;
+      if (!window.Voice || !Voice.available()) { btn.classList.add('hidden'); return; }
+      btn.classList.remove('hidden');
+      if (!btn.querySelector('img')) {
+        var img = document.createElement('img');
+        img.src = 'assets/icons/voicetoggle.svg';   /* the pack's own icon */
+        img.alt = '';
+        btn.appendChild(img);
+      }
+      btn.onclick = function () {
+        /* First tap arms the feature (settings has the same switch) — otherwise
+           the control exists but does nothing and looks broken. */
+        if (Config.section('app').stt === 'off') Config.set('app.stt', 'webSpeech');
+        Voice.toggle();
+      };
+      Voice.onState(function () { App._syncMic(); });
+      App._syncMic();
+    },
+
+    _syncMic: function () {
+      var btn = document.getElementById('btn-mic');
+      if (!btn || !window.Voice) return;
+      var on = Voice.isListening();
+      var blocked = on && !!(window.Turn && Turn.isSpeaking());
+      btn.classList.toggle('listening', on);
+      btn.classList.toggle('blocked', blocked);
+      btn.title = I18n.t(on ? 'mic.stop' : 'mic.start');
+    },
+
+    /* An accepted transcript — Echo and the half-duplex gate already had their
+       say. It lands in the input box exactly like typed text, and auto-send goes
+       through the send button so there is one send path, not two. */
+    _onVoiceTranscript: function (text) {
+      var inp = document.getElementById('input');
+      if (!inp) return;
+      inp.value = text;
+      if (!Config.section('app').autoSend) return;
+      var delay = Math.max(0, Number(Config.section('app').autoSendDelay) || 2000);
+      if (App._autoSendTimer) clearTimeout(App._autoSendTimer);
+      App._autoSendTimer = setTimeout(function () {
+        App._autoSendTimer = null;
+        /* The player may have edited it while the timer ran — then it is theirs
+           to send, not ours. */
+        if (String(inp.value).trim() !== String(text).trim()) return;
+        var send = document.getElementById('btn-send');
+        if (send) send.click();
+      }, delay);
     },
 
     /* -------------------------------------------------------------- talk */
@@ -2376,6 +2461,15 @@
         function (v) { Config.set('app.vibration', v); });
       App._switch(w, T('settings.rim'), Config.section('app').rim !== false,
         function (v) { Config.set('app.rim', v); });
+      App._switch(w, T('settings.stt'), Config.section('app').stt !== 'off',
+        function (v) {
+          Config.set('app.stt', v ? 'webSpeech' : 'off');
+          if (window.Voice && !v) Voice.stop();
+          if (App._setupMic) App._setupMic();
+          App._syncMic();
+        });
+      App._switch(w, T('settings.autoSend'), Config.section('app').autoSend,
+        function (v) { Config.set('app.autoSend', !!v); });
 
       /* ---------------- time passage (official drove it from AppServerClock) */
       App._title(w, T('settings.time'));
