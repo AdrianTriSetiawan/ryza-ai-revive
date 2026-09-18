@@ -292,12 +292,31 @@ cfg.versionLiterals.files.forEach(function (rel) {
 });
 if (!eViolations) console.log('  PASS 版本字面量一致');
 
+/* --------------------------------------------------- F: MIME parity (3 hosts)
+   Routes were already asserted in D; the static MIME tables were not, and their
+   divergence is not cosmetic. Measured (VAD spike, 2026-09-18): with `.mjs` and
+   `.wasm` missing from the desktop host's table, Chromium refuses to import the
+   module and onnxruntime-web hard-fails; with them added the same code runs
+   clean. Nothing in the tree would have reported that. */
+console.log('\n=== F. 静态 MIME 三端一致 ===');
+let fViolations = 0;
+const mimeReqs = (cfg.mimeContract && cfg.mimeContract.require) || [];
+mimeReqs.forEach(function (r) {
+  const p = path.join(ROOT, r.host);
+  if (!fs.existsSync(p)) { console.log('  缺文件 ' + r.host + '（' + r.ext + '）'); fViolations++; return; }
+  if (!new RegExp(r.re).test(fs.readFileSync(p, 'utf8'))) {
+    console.log('  ' + r.host + ' 的 MIME 表缺 ' + r.ext + '  (/' + r.re + '/)');
+    fViolations++;
+  }
+});
+if (!fViolations) console.log('  PASS 三端 MIME 表覆盖 ' + Array.from(new Set(mimeReqs.map(function (r) { return r.ext; }))).join('/'));
+
 /* --------------------------------------------------------------- summary */
-const total = aViolations + problems.length + hard.length + cViolations + dViolations + eViolations;
+const total = aViolations + problems.length + hard.length + cViolations + dViolations + eViolations + fViolations;
 console.log('\n--- 汇总 ---');
 console.log('  越层引用 ' + (aViolations + problems.length) + ' | 未声明的硬环 ' + hard.length +
             ' | core 未声明触达 ' + cViolations + ' | 三端契约 ' + dViolations +
-            ' | 版本字面量 ' + eViolations);
+            ' | 版本字面量 ' + eViolations + ' | MIME ' + fViolations);
 console.log('  不计入违规: 已声明环 ' + declared.length + ' 条、已声明 core 例外 ' + cDeclared +
             ' 项、自带 view 段豁免 ' + cViewExempt + ' 项、枢纽环 ' + hub.length + ' 条（待拆）');
 if (plannedMissing.length) {

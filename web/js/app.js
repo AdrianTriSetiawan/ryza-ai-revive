@@ -157,7 +157,19 @@
         });
         App.updateHud();
         App.renderWorld();
-        Alarm.load(); Alarm.render(document.getElementById('alarm-list'), App.playFile);
+        /* The Android shell can schedule alarms in the system: they survive the
+           process being killed and can wake the lock screen, which an in-page
+           timer cannot. When that bridge is present the native side becomes the
+           firing authority — Alarm.start stands its own tick down — and the web
+           model stays the source of truth, pushed down on every mutation.
+           The hook native calls on a foreground fire is defined before the
+           schedule is handed over; a missing hook must never cost an alarm. */
+        window.RyzaAlarmNative = {
+          onFire: function (a) { try { Alarm._nativeFire(a); } catch (e) {} }
+        };
+        if (window.RyzaAlarm && Alarm.setNative) Alarm.setNative(window.RyzaAlarm);
+        Alarm.load();
+        Alarm.render(document.getElementById('alarm-list'), App.playFile);
         Alarm.start(App._onAlarm);
         Quests.render(document.getElementById('quest-list'), {});
         Daily.render(document.getElementById('daily-body'));

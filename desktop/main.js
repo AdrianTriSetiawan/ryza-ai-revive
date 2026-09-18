@@ -48,6 +48,14 @@ const MIME = {
   '.atlas': 'text/plain; charset=utf-8', '.skel': 'application/octet-stream',
   '.m4a': 'audio/mp4', '.mp4': 'video/mp4', '.wav': 'audio/wav',
   '.mp3': 'audio/mpeg', '.ttf': 'font/ttf', '.otf': 'font/otf',
+  /* WebAssembly + ES modules. Missing these is not cosmetic: Chromium's
+     strict module MIME check refuses to import an .mjs served as
+     application/octet-stream, and instantiateStreaming refuses a .wasm
+     served as anything but application/wasm. Measured: onnxruntime-web
+     hard-fails on this host with the two entries below missing, and runs
+     clean with them present. */
+  '.mjs': 'application/javascript; charset=utf-8',
+  '.wasm': 'application/wasm',
   '.woff': 'font/woff', '.woff2': 'font/woff2'
 };
 

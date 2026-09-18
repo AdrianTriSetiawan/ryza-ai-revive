@@ -351,5 +351,30 @@
       "README.md",
       "docs/PROJECT.md"
     ]
+  },
+  "mimeContract": {
+    "_note": "三端的静态 MIME 表必须覆盖同一组扩展名。少了 .mjs/.wasm 不是外观问题：Chromium 对模块的 MIME 检查是强制的，onnxruntime-web 在本机桌面壳上实测直接 hard-fail，补上这两项后才正常。scripts/serve.py 用 Python 的 mimetypes（.wasm→application/wasm、.mjs→text/javascript，spike 已实测），没有显式表所以不在此清单内。",
+    "require": [
+      {
+        "ext": ".mjs",
+        "host": "desktop/main.js",
+        "re": "'\\.mjs'\\s*:"
+      },
+      {
+        "ext": ".wasm",
+        "host": "desktop/main.js",
+        "re": "'\\.wasm'\\s*:"
+      },
+      {
+        "ext": ".mjs",
+        "host": "android/app/src/main/java/com/ryza/chat/AssetServer.java",
+        "re": "MIME\\.put\\(\"mjs\""
+      },
+      {
+        "ext": ".wasm",
+        "host": "android/app/src/main/java/com/ryza/chat/AssetServer.java",
+        "re": "MIME\\.put\\(\"wasm\""
+      }
+    ]
   }
 }

@@ -48,6 +48,10 @@ public final class AssetServer extends Thread {
         MIME.put("m4a", "audio/mp4");
         MIME.put("wav", "audio/wav");
         MIME.put("mp3", "audio/mpeg");
+        // WebAssembly + ES modules: without these Chromium refuses to import the
+        // module (strict MIME check on .mjs) or to instantiate the .wasm stream.
+        MIME.put("mjs", "application/javascript; charset=utf-8");
+        MIME.put("wasm", "application/wasm");
         MIME.put("ttf", "font/ttf");
         MIME.put("woff", "font/woff");
         MIME.put("woff2", "font/woff2");

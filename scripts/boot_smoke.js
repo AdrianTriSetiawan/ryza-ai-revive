@@ -122,6 +122,17 @@ sandbox.fetch = (url) => {
 };
 sandbox.XMLHttpRequest = function () {};
 sandbox.Audio = function () { return makeEl('audio'); };
+/* Stand-in for the Android shell's RyzaAlarm JavascriptInterface. It has to be
+   present BEFORE App.init for the native path to be the one under test. */
+const alarmBridge = {
+  calls: [], items: '[]',
+  isSupported: () => true,
+  schedule(json) { this.calls.push(json); return '{"ok":true,"scheduled":1,"exact":true}'; },
+  list() { return this.items; },
+  cancel: () => true, cancelAll: () => true, snooze: () => true,
+  canScheduleExact: () => true, requestExactPermission: () => true
+};
+sandbox.RyzaAlarm = alarmBridge;
 sandbox.URL = { createObjectURL: () => 'blob:x', revokeObjectURL() {} };
 sandbox.requestAnimationFrame = () => 0;
 sandbox.cancelAnimationFrame = () => {};
@@ -373,6 +384,27 @@ for (const f of ['util.js', 'config.js', 'i18n.js', 'api.js', 'providers.js', 't
        sandbox.Game.itemName('bottle') ===
          sandbox.I18n.tc('item.bottle', '回復のボトル'),
        'Game owns item naming (the bag list now localizes like every other line)');
+    /* ---- the Android alarm bridge (android/.../RyzaAlarm.java contract) ----
+       When the shell can schedule alarms in the system, native becomes the
+       firing authority: the in-page interval must stand down or every alarm
+       rings twice, and the list must actually be handed over — an alarm the
+       system never received is an alarm that does not ring. */
+    ok(!!sandbox.RyzaAlarmNative && typeof sandbox.RyzaAlarmNative.onFire === 'function',
+       'the native fire hook is defined before the schedule is handed over');
+    ok(alarmBridge.calls.length >= 1, 'the alarm list is pushed to the native scheduler');
+    ok(sandbox.Alarm._timer === null,
+       'with native scheduling the in-page tick stands down (no double fire)');
+    sandbox.Alarm.add({ time: '07:30', days: [1, 3], type: 'goodMorning', style: 'whisper' });
+    ok(alarmBridge.calls.length >= 2, 'a mutation pushes the new schedule');
+    const pushedAlarms = JSON.parse(alarmBridge.calls[alarmBridge.calls.length - 1]);
+    const pushedOne = pushedAlarms[pushedAlarms.length - 1] || {};
+    ok(pushedOne.time === '07:30' && pushedOne.enabled === true &&
+       pushedOne.snoozeMin === 5 && Array.isArray(pushedOne.days) && pushedOne.days.length === 2,
+       'the pushed alarm carries the fields the native contract documents');
+    ok(typeof pushedOne.audio === 'string',
+       'and the clip to play (native has no voice-bank index of its own)');
+    ok(sandbox.Alarm._nativeFire({ id: 'nope' }) === false,
+       'a native fire for an unknown id does not ring');
     ok(sandbox.Api.EMOTIONS === sandbox.Util.EMOTIONS,
        'one emotion vocabulary (core), used by both the protocol and the face');
   } catch (e) {
