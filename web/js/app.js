@@ -659,6 +659,8 @@
       };
       document.getElementById('btn-alarm-new').onclick = function () { App._newAlarm(); };
       /* area_bottom_sheet.dart: who is around at the level you're looking at. */
+      var wmBtn = document.getElementById('btn-world-mode');
+      if (wmBtn) wmBtn.onclick = function () { App.toggleWorldMode(); };
       var peopleBtn = document.getElementById('btn-world-people');
       if (peopleBtn) peopleBtn.onclick = function () { App._showPeople(); };
       document.getElementById('btn-memory-clear').onclick = function () {
@@ -929,9 +931,34 @@
       var st = Config.section('state');
       var sel = document.getElementById('world-area');
       World.fillAreaSelect(sel, st.stage);
-      World.render(document.getElementById('world-fields'),
-                   document.getElementById('world-npcs'),
-                   st.stage, App.gotoStage);
+      var fields = document.getElementById('world-fields');
+      /* Official area plates with calibrated pins. The grid stays as the other
+         mode: the map is additive, World.render() is untouched. */
+      if (window.WorldMap && WorldMap.mode === 'map') {
+        WorldMap.render(fields, st, {
+          onPickStage: App.gotoStage,
+          onPickArea: function (areaId) {
+            var sel2 = document.getElementById('world-area');
+            if (sel2) sel2.value = areaId;
+          }
+        });
+      } else {
+        World.render(fields,
+                     document.getElementById('world-npcs'),
+                     st.stage, App.gotoStage);
+      }
+    },
+
+    /* 地图 / 网格 模式切换 */
+    toggleWorldMode: function () {
+      if (!window.WorldMap) return;
+      var m = WorldMap.toggle();
+      var btn = document.getElementById('btn-world-mode');
+      if (btn) {
+        var label = btn.querySelector('span');
+        if (label) label.textContent = (m === 'map') ? '列表' : '地图';
+      }
+      App.renderWorld();
     },
 
     /* source: world_map/widgets/area_bottom_sheet.dart + character_avatar */

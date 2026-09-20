@@ -117,7 +117,8 @@
     "onboarding": "ui",
     "shell": "ui",
     "kbd": "ui",
-    "settings": "ui"
+    "settings": "ui",
+    "worldmap": "render"
   },
   "allowCycles": [
     {
@@ -264,7 +265,11 @@
       "quests",
       "world",
       "daily"
-    ]
+    ],
+    "renderLayer": [
+      "worldmap"
+    ],
+    "_note_renderLayer": "render 层自带 view 段（画世界地图实图）；不进 ui，不向上引用。"
   },
   "coreExceptions": {
     "_note": "已声明的 core 层例外：出现时打印为‘已声明’而不是违规。声明要写明为什么无害，否则就是在给耦合开绿灯。",
