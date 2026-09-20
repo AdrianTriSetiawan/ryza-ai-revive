@@ -118,7 +118,9 @@
     "shell": "ui",
     "kbd": "ui",
     "settings": "ui",
-    "worldmap": "render"
+    "worldmap": "render",
+    "crfstore": "features",
+    "_comment_crfstore": "本地服装导入：IndexedDB 存文件 + ZIP 校验。属 features（可拔插玩法），只被 ui 层调用。"
   },
   "allowCycles": [
     {

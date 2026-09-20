@@ -285,6 +285,19 @@
          can supply: how to synthesize (language matrix + per-mode direction),
          how to play (the <audio> element, abortable mid-utterance), and how to
          cancel an in-flight reply (Api's epoch). */
+      /* 本地服装导入：渲染层只收一个「贴图从哪来」的函数，不碰 IndexedDB。
+         已导入的服装在这里登记进皮肤表，重启后仍然可穿。 */
+      if (window.CrfStore) {
+        Avatar.setPageSource(function (skinId, pageName) {
+          return CrfStore.pageUrl(skinId, pageName);
+        });
+        CrfStore.entries().then(function (list) {
+          if (!list.length) return;
+          var base = Avatar.skinsIndex || [];
+          list.forEach(function (e) { base.push(e); });
+          Avatar.skinsIndex = base;
+        }).catch(function () { /* 导入表坏了不影响启动 */ });
+      }
       if (window.Turn) {
         Turn.setTurnCanceller(function (reason) { return Api.newTurn(reason); });
         Turn.setSynth(function (text, meta) {
@@ -661,6 +674,45 @@
       /* area_bottom_sheet.dart: who is around at the level you're looking at. */
       var wmBtn = document.getElementById('btn-world-mode');
       if (wmBtn) wmBtn.onclick = function () { App.toggleWorldMode(); };
+      /* 服装导入：ZIP 走 CrfStore（IndexedDB），失败只报错不崩 */
+      var crfBtn = document.getElementById('btn-crf-zip');
+      var crfFile = document.getElementById('crf-file-zip');
+      if (crfBtn && crfFile) {
+        crfBtn.onclick = function () { crfFile.click(); };
+        crfFile.onchange = function () {
+          var f = crfFile.files && crfFile.files[0];
+          crfFile.value = '';
+          if (!f) return;
+          App.toast('导入中…');
+          CrfStore.importZip(f).then(function (v) {
+            return CrfStore.get(v.id).then(function (rec) {
+              var base = Avatar.skinsIndex || [];
+              base.push(CrfStore.entryFor(rec));
+              Avatar.skinsIndex = base;
+              Config.set('state.skin', v.id);
+              App.renderSkins();
+              App.toast('已导入：' + v.id);
+            });
+          }).catch(function (e) {
+            App.toast('导入失败：' + e.message, true);
+          });
+        };
+      }
+      var crfRm = document.getElementById('btn-crf-remove');
+      if (crfRm) {
+        crfRm.onclick = function () {
+          var list = CrfStore.list();
+          if (!list.length) { App.toast('没有导入的服装'); return; }
+          var last = list[list.length - 1];
+          CrfStore.remove(last.id).then(function () {
+            Avatar.skinsIndex = (Avatar.skinsIndex || []).filter(function (x) {
+              return x.id !== last.id;
+            });
+            App.renderSkins();
+            App.toast('已移除：' + last.id);
+          }).catch(function (e) { App.toast('移除失败：' + e.message, true); });
+        };
+      }
       var peopleBtn = document.getElementById('btn-world-people');
       if (peopleBtn) peopleBtn.onclick = function () { App._showPeople(); };
       document.getElementById('btn-memory-clear').onclick = function () {
@@ -2232,6 +2284,9 @@
     renderSkins: function () {
       fetch('assets/_index/skins.json').then(function (r) { return r.json(); })
         .then(function (skins) {
+          /* 导入的服装不在 skins.json 里，拼在前面（玩家自己加的排最前） */
+          var imported = (Avatar.skinsIndex || []).filter(function (x) { return x.imported; });
+          if (imported.length) skins = imported.concat(skins);
           var root = document.getElementById('skin-grid');
           var cur = Avatar.outfitOf(Config.section('state').skin);
           var seen = {}, outfits = [];

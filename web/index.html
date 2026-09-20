@@ -158,8 +158,14 @@
 </section>
 
 <section id="view-skin" class="view">
-  <div class="view-head"><h2 data-i18n="skin.title">服装</h2></div>
+  <div class="view-head"><h2 data-i18n="skin.title">服装</h2>
+    <div class="head-actions">
+      <button class="mini-btn" id="btn-crf-zip" title="导入服装 ZIP（atlas/png/skel/gesture 四件）">导入服装</button>
+      <button class="mini-btn" id="btn-crf-remove" title="移除最后导入的服装">移除导入</button>
+    </div>
+  </div>
   <div id="skin-grid"></div>
+  <input type="file" id="crf-file-zip" accept=".zip,application/zip" class="hidden">
 </section>
 
 <section id="view-memory" class="view">
@@ -322,6 +328,7 @@
 <script src="js/quests.js?v=cheat-1"></script>
 <script src="js/daily.js?v=cheat-1"></script>
 <script src="js/avatar.js?v=emotion-keep-1"></script>
+<script src="js/crfstore.js?v=1"></script>
 <script src="js/nsfw.js?v=undress-1"></script>
 <script src="js/world.js?v=tag-fill-1"></script>
 <script src="js/worldmap.js?v=1"></script>

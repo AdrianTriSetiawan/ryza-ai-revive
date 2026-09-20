@@ -367,6 +367,15 @@
       return null;
     },
 
+    /* Injected port: where does an atlas page texture come from?
+       Imported outfits live in IndexedDB (crfstore.js) and hand out blob URLs;
+       the render layer must not know that. fn(skinId, pageName) -> url|null|Promise.
+       Inert by default, so a headless regression can load this file alone. */
+    _pageSource: null,
+    setPageSource: function (fn) {
+      Avatar._pageSource = (typeof fn === 'function') ? fn : null;
+    },
+
     /* Sanitize a variant tag so it can only be a filename suffix. */
     _cleanVariant: function (name) {
       var n = String(name || 'default').toLowerCase();
@@ -435,6 +444,22 @@
       img.src = url;
     },
 
+    /* 先问导入源：这件服装是不是玩家导入的？是就直接用它的贴图（blob URL）。
+       不是则返回 null，继续走正常的 URL 候选。 */
+    _tryInjectedPage: function (L, pageName, cb) {
+      if (typeof Avatar._pageSource !== 'function' || !Avatar._loadedSkelId) { cb(null); return; }
+      var res;
+      try { res = Avatar._pageSource(Avatar._loadedSkelId, pageName); }
+      catch (e) { cb(null); return; }
+      Promise.resolve(res).then(function (url) {
+        if (!url) { cb(null); return; }
+        Avatar._loadPageImage(L, url, function (tex) {
+          if (tex) { cb(tex, url); return; }
+          cb(null);
+        });
+      }).catch(function () { cb(null); });
+    },
+
     _tryPageUrls: function (L, urls, cb) {
       var i = 0;
       (function next() {
@@ -448,6 +473,32 @@
           next();
         });
       })();
+    },
+
+    /* 导入服装：atlas 的贴图行是裸文件名，blob 地址解析不到它，
+       所以这里把导入的贴图（blob URL）直接设成**基础**贴图。
+       成功返回 true —— 调用方据此决定是否还要走变体逻辑。 */
+    _applyImportedPages: function (L, cb) {
+      if (typeof Avatar._pageSource !== 'function' || !L || !L._atlas) { cb(false); return; }
+      var pages = L._atlas.pages || [];
+      if (!pages.length) { cb(false); return; }
+      var pending = pages.length, any = new Array(pages.length);
+      function finish() {
+        pending--;
+        if (pending > 0) return;
+        var hit = any.some(Boolean);
+        if (hit) {
+          L._atlasBaseTex = pages.map(function (p, i) { return any[i] || p.texture; });
+          for (var i = 0; i < pages.length; i++) if (any[i]) pages[i].setTexture(any[i]);
+        }
+        cb(hit);
+      }
+      pages.forEach(function (page, idx) {
+        Avatar._tryInjectedPage(L, page.name, function (tex) {
+          if (tex) any[idx] = tex;
+          finish();
+        });
+      });
     },
 
     _applyAtlasVariant: function (cb) {
@@ -970,9 +1021,19 @@
             Avatar._typeMap = null;
             Avatar._sittingId = Avatar._sittingFromPosture();
             Avatar._measureHeadLocal();
-            Avatar.setEmotion(Avatar._emotion, Avatar._attitude, true);
-            Avatar._playWind();
-            Avatar.resize();
+            /* Imported outfits: the atlas names its page as a bare filename, so
+               the texture has to come from the injected source (blob URL). */
+            if (s.imported && Avatar._pageSource) {
+              Avatar._applyImportedPages(L, function () {
+                Avatar.setEmotion(Avatar._emotion, Avatar._attitude, true);
+                Avatar._playWind();
+                Avatar.resize();
+              });
+            } else {
+              Avatar.setEmotion(Avatar._emotion, Avatar._attitude, true);
+              Avatar._playWind();
+              Avatar.resize();
+            }
             if (Avatar._cleanVariant(Avatar._atlasVariant)) Avatar._applyAtlasVariant();
             cb && cb(null);
           });
