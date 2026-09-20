@@ -15,6 +15,9 @@
      * a line starting with "角色[<id>]：" belongs to that NPC
      * a line starting with "莱莎：" / "ライザ：" / "ryza：" belongs to her
      * a line starting with "旁白：" / "ナレーション：" / "narrator：" is narration
+     * a line starting with "译文：" / "訳文：" / "translation：" is a translation
+       of the line above it — shown on screen, **never spoken** (the same rule
+       that keeps NPC lines out of the synthesizer)
      * any other line continues whoever spoke last
    A reply with no such prefix is exactly what it was before: one Ryza segment,
    so every existing behaviour (and every existing regression) is unchanged.
@@ -43,7 +46,11 @@
 
   /* id shapes accepted from the model, normalised to the placement ids. */
   var SPEAKER = [
-    { kind: 'narrator', re: /^\s*(?:旁白|ナレーション|narrator)\s*[:：]\s*/i },
+    { kind: 'narrator', re: /^\s*(?:旁白|ナレーション|narrator|narasi|narração|वर्णन)\s*[:：]\s*/i },
+    /* 译文行：只显示、不进 TTS。与 npc/旁白同一条规则。
+       标签用 UI 语言写，所以这里把七种 UI 语言的词都认下来——
+       模型按提示词用哪种语言写标签都能解析。 */
+    { kind: 'translation', re: /^\s*(?:译文|譯文|訳文|translation|terjemahan|tradução|अनुवाद)\s*[:：]\s*/i },
     { kind: 'ryza',     re: /^\s*(?:莱莎(?:琳)?|ライザ(?:リン)?|ryza|ryza(?:lin)?)\s*[:：]\s*/i },
     { kind: 'npc',      re: /^\s*角色\s*\[\s*([^\]\r\n]+?)\s*\]\s*[:：]\s*/ }
   ];
@@ -111,11 +118,12 @@
         if (m) { matched = SPEAKER[s].kind; break; }
       }
       if (matched === 'narrator') { push('narrator', '', '', line.replace(SPEAKER[0].re, '')); continue; }
-      if (matched === 'ryza') { push('ryza', '', '', line.replace(SPEAKER[1].re, '')); continue; }
+      if (matched === 'translation') { push('translation', '', '', line.replace(SPEAKER[1].re, '')); continue; }
+      if (matched === 'ryza') { push('ryza', '', '', line.replace(SPEAKER[2].re, '')); continue; }
       if (matched === 'npc') {
         var raw = m[1];
         var id = resolveId(raw);
-        push('npc', id, nameOf(id, String(raw).trim()), line.replace(SPEAKER[2].re, ''));
+        push('npc', id, nameOf(id, String(raw).trim()), line.replace(SPEAKER[3].re, ''));
         continue;
       }
       push('ryza', '', '', line);
@@ -133,10 +141,63 @@
                 .trim();
   }
 
+  /* 显示用的说话人标签。旁白/她的台词不加标签（面板本身就是她的口吻），
+     NPC 用名字，译文用**当前 UI 语言**的「译文/訳文/Translation…」。 */
+  var TRANS_LABEL = {
+    zh: '译文', 'zh-tw': '譯文', ja: '訳文', en: 'Translation',
+    hi: 'अनुवाद', id: 'Terjemahan', 'pt-br': 'Tradução'
+  };
+  function translationLabel() {
+    var lang = 'zh';
+    try { if (global.Langs && Langs.ui) lang = Langs.ui() || 'zh'; } catch (e) {}
+    return TRANS_LABEL[lang] || TRANS_LABEL.zh;
+  }
+
   function labelFor(beat) {
     if (beat.speaker === 'ryza') return '';
     if (beat.speaker === 'narrator') return '';
+    if (beat.speaker === 'translation') return translationLabel();
     return beat.name || beat.id || '';
+  }
+
+  /* 机器用的方括号提示（[emotion] / [face:x]…）既不显示也不朗读。
+     注意：本项目的主协议把情绪/动作放在**首行标签行**，由 api.js 先剥掉；
+     这里只兜住模型偶尔写在台词中间的那些。
+     实现用逐字符扫描而不是正则：方括号的正则字符类在多层转义下极易写错
+     （写错过一次，`[happy]` 没被剥掉）。 */
+  function stripCues(s) {
+    var src = String(s == null ? '' : s);
+    var out = '';
+    var depth = 0;
+    for (var i = 0; i < src.length; i++) {
+      var c = src.charAt(i);
+      if (c === '[') { depth++; continue; }
+      if (c === ']') { if (depth > 0) { depth--; continue; } }
+      if (depth === 0) out += c;
+    }
+    return out.replace(/[ \t]{2,}/g, ' ').trim();
+  }
+
+  /* 这段回复是否用了「说话人标签」格式。用于两个判断：
+     ① 显示时要按说话人分行 ② 模型自己给了译文时，客户端不要再翻一遍 */
+  function hasLabels(text) {
+    var body = String(text == null ? '' : text);
+    var lines = body.split(String.fromCharCode(10));
+    for (var i = 0; i < lines.length; i++) {
+      for (var s2 = 0; s2 < SPEAKER.length; s2++) {
+        if (SPEAKER[s2].re.exec(lines[i])) return true;
+      }
+    }
+    return false;
+  }
+
+  /* 译文正文（多行用换行连接）。**只用于显示**，永远不进 TTS。 */
+  function translationText(beats) {
+    var list = Array.isArray(beats) ? beats : split(beats);
+    return list.filter(function (b) { return b.speaker === 'translation'; })
+               .map(function (b) { return b.text; })
+               .join(String.fromCharCode(10))
+               .trim();
   }
 
   /* ------------------------------------------------------------- candidates
@@ -171,6 +232,11 @@
 
   var Npc = {
     FREQ: FREQ,
+    /* 说话人切分与显示工具（译文/旁白只显示，不进 TTS） */
+    hasLabels: hasLabels,
+    stripCues: stripCues,
+    translationText: translationText,
+    translationLabel: translationLabel,
     /* A candidate is anyone with a base that touches the current stage, field or
        area — the ranking, not this cutoff, is what decides who actually speaks.
        (The multipliers below put an in-stage base at pct×100, same field at ×50
@@ -233,6 +299,12 @@
       L.push('あなた自身（ライザ）の台詞は「莱莎：」、地の文は「旁白：」で始める。前置きのない行はライザの台詞として扱われる。');
       L.push('行は必ず話者で始めること。台詞が複数行にわたる場合も、続きの行に同じ話者を付け直す（付け忘れるとライザの台詞として扱われる）。');
       L.push('NPCや旁白には表情・動作・音声のタグを付けない（それらの資源は存在しない）。一度に登場させるのは1人、多くても2人まで。');
+      /* 译文行：只显示、不朗读。仅在「回复语言 ≠ 玩家界面语言」时才有意义，
+         所以只在两者不同时才写进提示词 —— 否则会诱导模型每句都翻一遍。 */
+      if (opts.translate) {
+        L.push('返答の言語がプレイヤーの表示言語と違う場合、ライザの台詞の直後に「译文：」で訳を1行添えてよい。');
+        L.push('「译文：」の行は画面にだけ表示され、音声にはならない（原文が読まれる）。');
+      }
       L.push('上の一覧に無い人物の設定を創作しない。名前と立場以上の細かい設定は渡されていない。');
       L.push('話題に挙がっただけの人物を、その場にいることにしない。');
       return L.join('\n');

@@ -632,6 +632,35 @@ const sleep = () => new Promise((r) => setTimeout(r, 0));
      'H6 and it is therefore spoken (the case that used to be swallowed)');
   /* The prefix must be repeated on every line of a multi-line speech, so a
      continued paragraph stays with its speaker. */
+  /* H10: 译文行——只显示，永不进 TTS（与 NPC/旁白同一条规则）。 */
+  const withTrans = [
+    '莱莎：おはよう！',
+    '译文：早上好！',
+    '角色[tao]：やあ',
+    '旁白：タオが手を振った。'
+  ].join(String.fromCharCode(10));
+  const tb = Npc.split(withTrans);
+  ok(tb.length === 4, 'H10 译文行被识别为一个独立拍');
+  ok(tb[1].speaker === 'translation' && /早上好/.test(tb[1].text), 'H10 译文拍内容正确');
+  ok(Npc.spokenText(tb) === 'おはよう！', 'H10 译文绝不进 TTS');
+  ok(Npc.translationText(tb) === '早上好！', 'H10 译文正文可单独取出');
+  ok(Npc.hasLabels(withTrans) === true, 'H10 有标签格式被识别');
+  ok(Npc.hasLabels('おはよう') === false, 'H10 无标签回复按旧行为');
+
+  /* H10b: 其他 UI 语言的译文标签也认（模型可能用英/日文写标签）。 */
+  const enTrans = 'Ryza: Hello!' + String.fromCharCode(10) + 'Translation: Hello!';
+  ok(Npc.translationText(Npc.split(enTrans)) === 'Hello!', 'H10b 英文标签可解析');
+  const jaTrans = 'ライザ：おはよう' + String.fromCharCode(10) + '訳文：おはよう';
+  ok(Npc.translationText(Npc.split(jaTrans)) === 'おはよう', 'H10b 日文标签可解析');
+
+  /* H10c: 机器提示（方括号）既不显示也不朗读。 */
+  ok(Npc.stripCues('やあ[happy] 元気？') === 'やあ 元気？', 'H10c 方括号提示被剥掉');
+  ok(Npc.stripCues('[face:shy]ねえ[action:wave]') === 'ねえ', 'H10c 多个提示被剥掉');
+
+  /* H10d: 只有旁白、没有她的台词时，朗读文本必须为空。 */
+  const onlyNarr = Npc.split('旁白：彼女は窓のそばに立っている。');
+  ok(Npc.spokenText(onlyNarr) === '', 'H10d 只有旁白时朗读为空（不念旁白）');
+
   const multi = Npc.split('角色[tao]：一行目\n角色[tao]：二行目\n莱莎：わかった');
   const m0 = multi[0] || {}, m1 = multi[1] || {}, m2 = multi[2] || {};
   ok(multi.length === 3 && m0.speaker === 'npc' && m1.speaker === 'npc' &&

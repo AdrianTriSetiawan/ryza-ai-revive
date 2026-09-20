@@ -311,7 +311,13 @@
           var st2 = Config.section('state');
           var replyL = (window.Langs && Langs.llm) ? Langs.llm() : 'ja';
           var ttsL = (window.Langs && Langs.tts) ? Langs.tts() : replyL;
-          var prep = (ttsL !== replyL && Api.translate)
+          /* 防重复翻译：回复里若已经带「译文：」行，说明模型自己翻过了——
+             而 Turn 只把**她的台词**传进来（译文行不在这里），所以那条路
+             （tts.lang ≠ llm.lang 时先翻再合成）依然要跑。
+             真正要防的是「模型给了译文、客户端又翻一遍」⇒ 由下面 displayText
+             的 showOriginal 决定显示哪一份，这里只在模型没给译文时才翻。 */
+          var alreadyTranslated = !!(meta && meta.translated);
+          var prep = (!alreadyTranslated && ttsL !== replyL && Api.translate)
             ? Api.translate(text, ttsL) : Promise.resolve(text);
           return prep.then(function (t) {
             /* Record her own line as it is voiced, so the recogniser hearing
@@ -1451,7 +1457,11 @@
       /* Facts above, roster + protocol below — the model cannot use a cast it
          was never shown (web/js/npc.js). */
       if (window.Npc && Npc.promptBlock) {
-        var npcBlock = Npc.promptBlock(st, { appCfg: Config.section('app') });
+        var npcBlock = Npc.promptBlock(st, {
+          appCfg: Config.section('app'),
+          /* 回复语言与界面语言不同时，才允许模型附带「译文：」行 */
+          translate: !!(window.Langs && Langs.llm && Langs.ui && Langs.llm() !== Langs.ui())
+        });
         if (npcBlock) L.push('', npcBlock);
       }
       return L.join('\n');
@@ -1679,7 +1689,23 @@
         : [{ speaker: 'ryza', id: '', name: '', text: String(reply.text || '') }];
       if (!beats.length) { App.typeBubble(''); return; }
       var mine = (window.Npc && Npc.spokenText) ? Npc.spokenText(beats) : reply.text;
-      var others = beats.filter(function (b) { return b.speaker !== 'ryza'; });
+      /* 「原文/译文」显示策略。译文行**永不进 TTS**：它不在 mine 里
+         （spokenText 只取 ryza 拍），只在这里决定要不要显示。
+         设置里关掉「显示原文」时，面板先不写她的原句、只留译文行——
+         但语音照旧读原句（朗读与显示是两条线）。 */
+      var showOriginal = true;
+      try {
+        var appCfg = Config.section('app') || {};
+        if (appCfg.showOriginal === false) showOriginal = false;
+      } catch (e) {}
+      var others = beats.filter(function (b) {
+        if (b.speaker === 'ryza') return false;
+        /* 只要译文时，旁白/译文照显，NPC 行也保留（是别的角色在说话） */
+        return true;
+      });
+      if (!showOriginal && others.some(function (b) { return b.speaker === 'translation'; })) {
+        mine = '';                       /* 不写原句，等下面只显示译文行 */
+      }
 
       var showOthers = function () {
         var i = 0;
