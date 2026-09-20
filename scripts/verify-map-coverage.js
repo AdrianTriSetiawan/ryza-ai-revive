@@ -8,7 +8,7 @@
  * 用法: 起 serve.py 后 node scripts/verify-map-coverage.js
  */
 'use strict';
-const puppeteer = require('D:/agent/projects/ryza-ai-chat-revive-official/node_modules/puppeteer-core');
+const { puppeteer } = require('./_probe_env');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 (async () => {

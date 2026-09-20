@@ -8,7 +8,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const puppeteer = require('D:/agent/projects/ryza-ai-chat-revive-official/node_modules/puppeteer-core');
+const { puppeteer, SHOTS } = require('./_probe_env');
 
 const ROOT = path.resolve(__dirname, '..');
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
@@ -139,7 +139,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     if (window.App && App.showView) App.showView('talk');
   });
   await sleep(2000);
-  const out = path.join('D:/agent/projects/ryza-ai-chat-revive-official/shots', 'old-imported-skin.png');
+  const out = path.join(SHOTS, 'old-imported-skin.png');
   await page.screenshot({ path: out });
   console.log('截图: ' + out);
 

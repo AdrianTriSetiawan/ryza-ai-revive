@@ -7,12 +7,12 @@
  * 用法: 起 serve.py 后 node scripts/ux-walkthrough.js
  */
 'use strict';
-const puppeteer = require('D:/agent/projects/ryza-ai-chat-revive-official/node_modules/puppeteer-core');
+const { puppeteer, SHOTS } = require('./_probe_env');
 const fs = require('fs');
 const path = require('path');
 
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
-const OUT = 'D:/agent/projects/ryza-ai-chat-revive-official/shots/ux';
+const OUT = path.join(SHOTS, 'ux');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 const steps = [];

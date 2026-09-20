@@ -3,7 +3,8 @@
    pointer capture 把真实 click 吞掉了 —— 只有真点击才测得出来。
 */
 'use strict';
-const puppeteer = require('D:/agent/projects/ryza-ai-chat-revive-official/node_modules/puppeteer-core');
+const path = require('path');
+const { puppeteer, SHOTS } = require('./_probe_env');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 (async () => {
@@ -112,7 +113,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const sideOk = sideState.bodyClass && sideState.qbOpacity === '0';
   console.log('侧栏打开: ' + JSON.stringify(sideState) + '  → ' + (sideOk ? '快捷钮让位 ✔' : '仍在叠着 ✘'));
 
-  await page.screenshot({ path: 'D:/agent/projects/ryza-ai-chat-revive-official/shots/old-map-fixes.png' });
+  await page.screenshot({ path: path.join(SHOTS, 'old-map-fixes.png') });
   if (errs.length) console.log('错误: ' + errs.slice(0, 4).join(' | '));
 
   const ok = pinWorked && stayed && sideOk;

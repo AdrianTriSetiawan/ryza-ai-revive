@@ -8,12 +8,12 @@
  * 目标: worldmap | talk | welcome
  */
 'use strict';
-const puppeteer = require('D:/agent/projects/ryza-ai-chat-revive-official/node_modules/puppeteer-core');
+const { puppeteer, SHOTS } = require('./_probe_env');
 const fs = require('fs');
 const path = require('path');
 
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
-const OUT = 'D:/agent/projects/ryza-ai-chat-revive-official/shots';
+const OUT = SHOTS;
 const target = process.argv[2] || 'worldmap';
 const size = (process.argv[3] || '440x900').split('x').map(Number);
 

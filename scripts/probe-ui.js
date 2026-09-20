@@ -2,9 +2,9 @@
    用法: node scripts/probe-ui.js <side|sit|map>
 */
 'use strict';
-const puppeteer = require('D:/agent/projects/ryza-ai-chat-revive-official/node_modules/puppeteer-core');
+const { puppeteer, SHOTS } = require('./_probe_env');
 const fs = require('fs');
-const OUT = 'D:/agent/projects/ryza-ai-chat-revive-official/shots';
+const OUT = SHOTS;
 const what = process.argv[2] || 'side';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 

@@ -2,9 +2,9 @@
    用法: node scripts/shot-talk.js [zoom步数]
 */
 'use strict';
-const puppeteer = require('D:/agent/projects/ryza-ai-chat-revive-official/node_modules/puppeteer-core');
+const { puppeteer, SHOTS } = require('./_probe_env');
 const fs = require('fs');
-const OUT = 'D:/agent/projects/ryza-ai-chat-revive-official/shots';
+const OUT = SHOTS;
 const steps = Number(process.argv[2] || 0);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 

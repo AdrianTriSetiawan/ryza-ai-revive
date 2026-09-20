@@ -9,7 +9,7 @@
 |---|---|
 | 官方 App | `ai.gospiral.atelierryza` versionName **1.1.1**，versionCode 231 |
 | 设备 | MuMu 模拟器 Android 12（x86_64，ABI armeabi-v7a，root 可用） |
-| adb | `D:/mumu/MuMuPlayer/nx_main/adb.exe`（设备 `127.0.0.1:16416`） |
+| adb | 模拟器自带的 `adb.exe`（本机绝对路径不入库；设备 `127.0.0.1:16416`） |
 | 采集方式 | `adb exec-out "su 0 cat <路径>"`（只读，未修改设备任何数据） |
 | 采集时间 | 2026-09-20 |
 

@@ -554,7 +554,7 @@ node scripts/stamp_version.js --check
 # 打包（版本单一来源：先改 config/version.json，再 stamp 会同步 package.json / build.gradle / 三端 UA）
 powershell -File scripts/build_desktop.ps1     # → output/desktop/RyzaChat-Setup-<ver>.exe
 powershell -File scripts/build_apk.ps1         # → output/android/RyzaChat-<ver>.apk
-# Android 工具链路径：config/android-tools.local.txt（当前指向 D:\agent\tools，含 jdk17 + android-34 + build-tools 34）
+# Android 工具链路径：config/android-tools.local.txt（本机自行填写，含 jdk17 + android-34 + build-tools 34；该文件不入库）
 ```
 
 ### 三个已知的坑
@@ -630,7 +630,7 @@ powershell -File scripts/build_apk.ps1         # → output/android/RyzaChat-<ve
 
 ### 13.4 本地留存（**可清理，别依赖**）
 
-- `D:\agent\temp\neko-inv\` —— 调研 N.E.K.O. 时抓取的 105 个源文件
+- `<本机 temp>/neko-inv/` —— 调研 N.E.K.O. 时抓取的 105 个源文件
 - `projects/ryza-ai-revive/temp/repo/` —— 调研 AgentAtelierR 时抓取的 93 个源文件
 - 两者都是 `temp/`，按项目规范**可随时清理**；要复现按 §13.1 的 URL 重新抓（airi 未落盘，只做了线上核对）
 

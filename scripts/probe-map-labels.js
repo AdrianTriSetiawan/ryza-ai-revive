@@ -2,7 +2,7 @@
    做法：直接读 DOM 文本 + 计算后的盒子尺寸（不截图）。
 */
 'use strict';
-const puppeteer = require('D:/agent/projects/ryza-ai-chat-revive-official/node_modules/puppeteer-core');
+const { puppeteer } = require('./_probe_env');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 (async () => {

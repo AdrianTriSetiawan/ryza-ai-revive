@@ -15,7 +15,7 @@
 | 项 | 值 |
 |---|---|
 | 模拟器 | MuMu，安卓 12（x86_64 / ABI armeabi-v7a，**root 可用**） |
-| adb | `D:/mumu/MuMuPlayer/nx_main/adb.exe`，设备 `127.0.0.1:16416` |
+| adb | 模拟器自带的 `adb.exe`（本机路径，按自己的安装位置填），设备 `127.0.0.1:16416` |
 | 安装根 | `/data/app/~~jUZMRrX56Gr7NEks5PVP1w==/ai.gospiral.atelierryza-fNjMWARSOPyRKjTZsvpSrQ==/` |
 | 数据根 | `/data/data/ai.gospiral.atelierryza/` |
 | 版本 | versionName **1.1.1**，versionCode **231**，minSdk 24，targetSdk 36 |
@@ -45,7 +45,7 @@ split_config.en.apk / .mdpi.apk           语言/密度资源
 取文件的方式（**只读**）：
 
 ```bash
-ADB="D:/mumu/MuMuPlayer/nx_main/adb.exe"
+ADB="<模拟器目录>/adb.exe"        # 本机路径，按自己的安装位置填
 # 文本/小文件
 "$ADB" -s 127.0.0.1:16416 exec-out "su 0 cat /data/data/ai.gospiral.atelierryza/files/masters_bundle.json" > out.json
 # APK（split 各自拉）
@@ -89,7 +89,7 @@ https://firebasestorage.googleapis.com/v0/b/craft-prod-2026.firebasestorage.app/
 
 ### 1.3 重建项目里的解包产物（可直接查）
 
-`D:/agent/projects/ryza-ai-chat-revive-official/`：
+参考项目的本机解包副本（路径随机器，本仓库只记形态不记路径）：
 
 | 路径 | 内容 |
 |---|---|
@@ -116,7 +116,7 @@ https://firebasestorage.googleapis.com/v0/b/craft-prod-2026.firebasestorage.app/
 | 来源 | `https://github.com/onion-aqua/AgentAtelierR` |
 | 形态 | Dart / Flutter（**与本项目不同构**，代码不能直接用） |
 | 许可 | **仓库内无 LICENSE 文件**；作者已确认有许可（用户与群主确认）。要抄代码先让作者在仓库里补声明 |
-| 本地抓取副本 | `D:/agent/projects/ryza-ai-revive/temp/repo/`（93 个文件，**temp 可清理**） |
+| 本地抓取副本 | `temp/repo/`（相对仓库根；93 个文件，**temp 可清理**） |
 
 **它有什么值得看**（详见重建项目 `docs/reference-agentatelierr.md`）：
 
@@ -135,16 +135,16 @@ https://firebasestorage.googleapis.com/v0/b/craft-prod-2026.firebasestorage.app/
 
 | 项 | 值 |
 |---|---|
-| 来源 | `D:/download/Atelier R'Coagula 0.9.0-beta.1.zip`（755,618,161 B，Electron 安装包） |
+| 来源 | `<下载目录>/Atelier R'Coagula 0.9.0-beta.1.zip`（755,618,161 B，Electron 安装包） |
 | 形态 | **Electron + 同一套 `resources/web/js/` 结构**（与本项目同构，最值得读） |
 | 许可 | 包内只有 Electron/LICENSE.chromium，仓库许可未见 ⇒ 只取做法 |
-| 本地解出副本 | `D:/agent/projects/ryza-ai-chat-revive-official/temp/coagula/web/`（**temp 可清理**） |
+| 本地解出副本 | 参考项目副本下的 `temp/coagula/web/`（**temp 可清理**） |
 
 解出方式（zip 路径里有单引号和空格，用 Python 的 zipfile 更省事）：
 
 ```python
 import zipfile, os
-z = zipfile.ZipFile(r"D:\download\Atelier R'Coagula 0.9.0-beta.1.zip")
+z = zipfile.ZipFile(r"<下载目录>\Atelier R'Coagula 0.9.0-beta.1.zip")
 for n in z.namelist():
     if '/resources/web/' in n and not n.endswith('/'):
         t = 'web/' + n.split('/resources/web/')[-1]
@@ -186,7 +186,7 @@ for n in z.namelist():
 
 | 截图 | 内容 | 用途 |
 |---|---|---|
-| `C:/Users/bmh05/Pictures/Screenshots/屏幕截图 2026-09-20 140421.png` | 官方**标题页**（RyzaChat 与莱莎共谱…, ver 1.1.1 (231)） | 标题页形态、右上角「選項/選單」 |
+| `<用户截图目录>/屏幕截图 2026-09-20 140421.png` | 官方**标题页**（RyzaChat 与莱莎共谱…, ver 1.1.1 (231)） | 标题页形态、右上角「選項/選單」 |
 | `…140431.png` | 官方**世界地图·区域级**：铺满整屏、金色水滴标记 + 深色地名胶囊、数字角标、锁图标、「目前位置」红标、底部「庫肯島周邊地區 ▾ + 目前位置」 | 区域级布局 |
 | `…140440.png` | 官方**区域选择弹层**：底部弹层、两列卡片（区域实景图 + 锁 + 底部一排 NPC 头像 + 名称）、当前区域挂「目前位置」 | 区域弹层的形态 |
 | `…140447.png` | 官方**世界地图·地点级**：选中 field 用橙色描边圈出、圈外压暗、stage 标记带**角色头像**与地名胶囊、底部变成「‹ 小妖精森林 + 目前位置」 | 地点级布局 |
