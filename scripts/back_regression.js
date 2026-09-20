@@ -181,7 +181,19 @@ const Avatar = {
   postureKey() { return 'posture_sitting'; }, supportsBothPostures() { return false; },
   hitPartAt() { return null; }, poke() { return null; },
   outfitOf(id) { return String(id).replace(/_(01|99)$/, ''); },
-  setAtlasVariant() {}, variantPageUrls() { return []; }
+  setAtlasVariant() {}, variantPageUrls() { return []; },
+  /* The ports avatar.js exposes as *consumers*, plus the public getters app.js
+     reads. App.init calls Avatar.setNotice unconditionally, so a stub without
+     it makes the whole boot chain throw here — and this suite then reported a
+     wall of downstream failures that had nothing to do with the back key.
+     boot_smoke.js keeps the same list; they must not drift apart. */
+  setNotice() {}, setVoiceSource() {},
+  _panelFrac: 0,
+  panelFraction() { return this._panelFrac; },
+  setPanelFraction(f) { this._panelFrac = Number(f) || 0; },
+  isHidden() { return false; }, cssZoom() { return 1; },
+  currentEmotion() { return ''; }, currentAttitude() { return ''; },
+  screenState() { return { emotion: '', attitude: '' }; }
 };
 sandbox.Avatar = Avatar;
 sandbox.Sound = {
@@ -199,9 +211,17 @@ vm.createContext(sandbox);
 const load = (f) => vm.runInContext(fs.readFileSync(path.join(WEB, 'js', f), 'utf8'),
                                    sandbox, { filename: f });
 
-for (const f of ['util.js', 'config.js', 'i18n.js', 'api.js', 'memory.js',
-                 'game.js', 'quests.js', 'daily.js', 'world.js', 'audio.js',
-                 'alarm.js', 'fx.js', 'nsfw.js', 'onboarding.js', 'back.js', 'app.js']) {
+/* The load list has to track web/index.html: these are the real modules, and a
+   missing one does not fail loudly — it aborts App.init's promise chain, which
+   is what wires the title screen, and every layer assertion below then reads a
+   phantom overlay. settings.js is the one that bit: app.js delegates
+   buildSettings() to it since the split, so the chain threw `Settings is not
+   defined` and the whole suite looked like a back-key bug. */
+for (const f of ['util.js', 'config.js', 'i18n.js', 'api.js', 'providers.js',
+                 'turn.js', 'echo.js', 'voice.js', 'memory.js',
+                 'game.js', 'quests.js', 'daily.js', 'world.js', 'npc.js', 'audio.js',
+                 'alarm.js', 'fx.js', 'nsfw.js', 'settings.js', 'onboarding.js',
+                 'back.js', 'app.js']) {
   try { load(f); } catch (e) { bad('load ' + f + ': ' + e.message); }
 }
 
