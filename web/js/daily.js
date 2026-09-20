@@ -44,7 +44,42 @@
   var _celebrate = null;   /* fn()     — reward feedback (se + confetti) */
   var _present = null;     /* fn(res)  — claim outcome (toast + HUD refresh) */
 
+  /* Days since the first launch, for the official welcome_start_day
+     (0 / 3 / 5). Stored as a plain date string; the count is derived, so a
+     clock change cannot inflate it. */
+  function firstLaunchDate() {
+    var raw = '';
+    try { raw = localStorage.getItem('ryza.firstLaunch.v1') || ''; } catch (e) {}
+    if (!raw) {
+      raw = todayStr();
+      try { localStorage.setItem('ryza.firstLaunch.v1', raw); } catch (e) {}
+    }
+    return raw;
+  }
+  /* todayStr() is not zero-padded ("2026-9-20"), which is not valid ISO and
+     parses inconsistently, so compare Y/M/D numerically instead of via Date
+     string parsing. */
+  function ymd(d) {
+    d = d || new Date();
+    return { y: d.getFullYear(), m: d.getMonth() + 1, d: d.getDate() };
+  }
+  function parseYmd(s) {
+    var p = String(s || '').split('-');
+    return { y: Number(p[0]) || 0, m: Number(p[1]) || 0, d: Number(p[2]) || 0 };
+  }
+  function dayIndex() {
+    var a = parseYmd(firstLaunchDate());
+    var b = ymd();
+    if (!a.y || !b.y) return 0;
+    var t0 = Date.UTC(a.y, a.m - 1, a.d);
+    var t1 = Date.UTC(b.y, b.m - 1, b.d);
+    return Math.max(0, Math.round((t1 - t0) / 86400000));
+  }
+
   var Daily = {
+    /* Days since first launch — the official welcome_start_day (0/3/5)
+       reads this. Lives here so there is one date utility, not two. */
+    dayIndex: dayIndex,
     setCelebrate: function (fn) { _celebrate = (typeof fn === 'function') ? fn : null; },
     setPresenter: function (fn) { _present = (typeof fn === 'function') ? fn : null; },
 

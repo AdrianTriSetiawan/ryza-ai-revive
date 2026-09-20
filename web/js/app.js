@@ -177,6 +177,8 @@
         App.buildSettings();
         App.buildCharaForm();
         App.renderMemory();
+        /* Official groups open on day 0 / 3 / 5 since first launch. */
+        if (window.Daily && Daily.dayIndex) Welcome.bumpDay(Daily.dayIndex());
         Welcome.render(document.getElementById('welcome-body'));
         if (window.Fx) Fx.init();
         App._fitUi();
@@ -272,6 +274,10 @@
           if (!res) return;
           if (!res.ok) { App.toast(I18n.t('dl.already')); return; }
           App.toast(I18n.t('dl.got') + res.text);
+          /* Official activity: login_streak. The mission needs 1 / 3 / 5
+             consecutive days, so record the streak itself rather than +1. */
+          Welcome.mark('login_bonus', Daily.streak());
+          Welcome.bumpDay(Daily.streak());
           App.refreshHud();
         });
       }
@@ -689,16 +695,16 @@
       var langSheet = document.getElementById('sheet-lang');
       if (langSheet) langSheet.classList.add('hidden');
       if (name === 'world') {
-        Welcome.mark('map');
+        Welcome.milestone('map');   /* local milestone: the official board has no map mission */
         Sound.setRoute('world');
         App.renderWorld();
       } else {
         Sound.setRoute('talk');
       }
       if (name === 'memory') App.renderMemory();
-      if (name === 'skin') { Welcome.mark('skin'); App.renderSkins(); }
+      if (name === 'skin') { Welcome.milestone('skin'); App.renderSkins(); }
       if (name === 'welcome') Welcome.render(document.getElementById('welcome-body'));
-      if (name === 'alarm') Welcome.mark('alarm');
+      if (name === 'alarm') Welcome.milestone('alarm');
       if (name === 'quest') Quests.render(document.getElementById('quest-list'), {});
       if (name === 'daily') Daily.render(document.getElementById('daily-body'));
     },
@@ -1071,6 +1077,7 @@
         if (!part) return;   /* miss = no ripple, no SE, no reaction */
         App._ripple(x, y);
         var overlay = Avatar.poke(part);
+        Welcome.mark('touch');   /* official activity: app_launched x1 */
         App.buzz();
         if (window.Sound) {
           Sound.se('touch_start');
@@ -1095,7 +1102,7 @@
         if (Quests.pendingAdvance()) {
           Quests.takeNext();
           Quests.render(document.getElementById('quest-list'), {});
-          Welcome.mark('quest');
+          Welcome.mark('mission_clear');   /* official activity: app_launched x3 */
           var st = Config.section('state');
           var clip = VoiceBank.pick('wellDone', st.mode === 'asmr' ? 'whisper' : 'normal',
                                     Alarm.todForHour(new Date().getHours()));
@@ -1443,7 +1450,7 @@
       App.speaking = true;
       document.getElementById('btn-send').disabled = true;
       App.showTyping();
-      Welcome.mark('talk');
+      Welcome.mark('talk');            /* official activity: app_launched x5 */
 
       /* A new turn supersedes whatever was in flight: it stops her speech,
          drops queued lines, and invalidates a reply still on the wire (the

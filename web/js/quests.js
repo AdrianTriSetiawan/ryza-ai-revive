@@ -597,25 +597,139 @@
   }
   function itemValue(id) { return Game.itemValue(id); }
 
-  /* ------------------------------------------------- welcome mission screen
-     features/welcome_mission — five onboarding tiles on the shipped art. */
-  var WELCOME_STEPS = [
-    { id: 'talk', icon: 'icon_scroll', titleKey: 'wm.talk.title', descKey: 'wm.talk.desc' },
-    { id: 'map', icon: 'icon_clock', titleKey: 'wm.map.title', descKey: 'wm.map.desc' },
-    { id: 'alarm', icon: 'icon_chest', titleKey: 'wm.alarm.title', descKey: 'wm.alarm.desc' },
-    { id: 'skin', icon: 'sparkle', titleKey: 'wm.skin.title', descKey: 'wm.skin.desc' },
-    { id: 'quest', icon: 'icon_scroll', titleKey: 'wm.quest.title', descKey: 'wm.quest.desc' }
+  /* ------------------------------------------------- welcome mission board
+     Official shape, not the old five-tile guess.
+
+     Source: docs/official/masters_bundle.json (the payload the official app
+     caches at /data/data/.../files/masters_bundle.json). It defines:
+
+       mission_groups  3 groups, welcome_start_day 0 / 3 / 5, reward 4 points
+                       -> 100 voice_token
+       missions        4 per group, driven by two activities:
+                         app_launched  x3      (finish 3 missions)
+                         app_launched  x1      (touch Ryza)
+                         app_launched  x5      (talk with a character 5 times)
+                         login_streak  x1/x3/x5 (claim the login bonus)
+       activities      10 kinds in total; only the two above appear in these
+                       twelve missions
+
+     Progress is therefore a COUNTER per activity, not "did this screen ever
+     open". The old panel marked itself from opening the map / alarm / skin
+     screens; the official board never asked for that, so those markers stay as
+     local milestones under their own keys and nothing already working is lost.
+
+     Rewards: the official group reward is 4 mission points -> 100 voice tokens.
+     This build has no token wallet (no official server, no purchases), so the
+     group claim pays the local equivalents below and records which groups were
+     claimed. That mapping is a LOCAL decision, listed in docs/official/README.md. */
+
+  /* Official titles, verbatim: ja is the shipped wording, zh/en are our
+     translations of those same strings. */
+  var WM_MISSION_TEXT = {
+    mission_clear: { ja: 'ミッションを3つクリアしよう', zh: '完成 3 次任务', en: 'Achieve mission 3 times' },
+    touch: { ja: 'ライザを触ってみる', zh: '摸一下莱莎', en: 'Touch Ryza' },
+    talk: { ja: 'キャラと5回会話してみよう', zh: '与角色对话 5 次', en: 'Talk with a character 5 times' },
+    login_bonus: { ja: 'ログインボーナスを受け取ろう', zh: '领取登录奖励', en: 'Get a logged in bonus' }
+  };
+
+  /* missions[] from masters_bundle, in official priority order (1..12). */
+  var WM_GROUPS = [
+    { id: 'crf_msng_001', title: 'Step 1', day: 0,
+      missions: [
+        { id: 'crf_msn_001_0001', activity: 'mission_clear', need: 3 },
+        { id: 'crf_msn_001_0002', activity: 'touch', need: 1 },
+        { id: 'crf_msn_001_0003', activity: 'talk', need: 5 },
+        { id: 'crf_msn_001_0004', activity: 'login_bonus', need: 1 }
+      ] },
+    { id: 'crf_msng_002', title: 'Step 2', day: 3,
+      missions: [
+        { id: 'crf_msn_002_0001', activity: 'mission_clear', need: 3 },
+        { id: 'crf_msn_002_0002', activity: 'touch', need: 1 },
+        { id: 'crf_msn_002_0003', activity: 'talk', need: 5 },
+        { id: 'crf_msn_002_0004', activity: 'login_bonus', need: 3 }
+      ] },
+    { id: 'crf_msng_003', title: 'Step 3', day: 5,
+      missions: [
+        { id: 'crf_msn_003_0001', activity: 'mission_clear', need: 3 },
+        { id: 'crf_msn_003_0002', activity: 'touch', need: 1 },
+        { id: 'crf_msn_003_0003', activity: 'talk', need: 5 },
+        { id: 'crf_msn_003_0004', activity: 'login_bonus', need: 5 }
+      ] }
   ];
 
+  /* Local equivalent of the official 4 points -> 100 voice_token. */
+  var WM_GROUP_REWARD = { money: 300, exp: 40 };
+  var WM_ICON = {
+    mission_clear: 'icon_scroll', touch: 'sparkle',
+    talk: 'icon_scroll', login_bonus: 'icon_chest'
+  };
+
   var Welcome = {
-    mark: function (id) {
+    /* Board + groups exposed for tooling/regression (read-only). */
+    groups: WM_GROUPS,
+    /* Is this group open yet? Official gate is welcome_start_day. */
+    isOpen: function (g) { return Welcome.dayCount() >= g.day; },
+
+    /* Official activity counters live in Game.s so they ride the save file. */
+    activity: function (kind) {
+      var s = Game.s;
+      if (!s.welcome_activity) s.welcome_activity = {};
+      return Number(s.welcome_activity[kind] || 0);
+    },
+
+    /* Record one activity. count > 1 for "advance several steps at once". */
+    mark: function (kind, count) {
+      var n = Math.max(1, Number(count) || 1);
+      var s = Game.s;
+      if (!s.welcome_activity) s.welcome_activity = {};
+      s.welcome_activity[kind] = Number(s.welcome_activity[kind] || 0) + n;
+      Game.save();
+      Game.emit('welcome');
+      return s.welcome_activity[kind];
+    },
+
+    /* Local milestones (where the old map / alarm / skin tiles went). The
+       official board has no such missions, but the player still gets feedback. */
+    milestone: function (id) {
       var w = Config.section('state').welcome || {};
       if (w[id]) return;
       Config.set('state.welcome.' + id, true);
     },
-    done: function (id) {
+    milestoneDone: function (id) {
       return !!(Config.section('state').welcome && Config.section('state').welcome[id]);
     },
+
+    /* Days since first launch: decides which groups are open (official
+       welcome_start_day 0 / 3 / 5). */
+    dayCount: function () {
+      try { return Number(Config.section('state').welcome_day || 0); } catch (e) { return 0; }
+    },
+    bumpDay: function (n) {
+      var cur = Welcome.dayCount();
+      var next = Math.max(cur, Number(n) || 0);
+      if (next !== cur) Config.set('state.welcome_day', next);
+      return next;
+    },
+
+    missionDone: function (m) { return Welcome.activity(m.activity) >= m.need; },
+    groupDone: function (g) {
+      return g.missions.every(function (m) { return Welcome.missionDone(m); });
+    },
+    groupClaimed: function (g) {
+      var c = Config.section('state').welcome_claimed || {};
+      return !!c[g.id];
+    },
+    claimGroup: function (g) {
+      if (!Welcome.groupDone(g) || Welcome.groupClaimed(g)) return null;
+      var c = Config.section('state').welcome_claimed || {};
+      c[g.id] = true;
+      Config.set('state.welcome_claimed', c);
+      Game.addMoney(WM_GROUP_REWARD.money);
+      Game.addExp(WM_GROUP_REWARD.exp);
+      Game.remember('ウェルカムミッション ' + g.title + ' クリア');
+      return WM_GROUP_REWARD;
+    },
+
     render: function (root) {
       root.innerHTML = '';
       var hero = document.createElement('div');
@@ -624,26 +738,68 @@
       hero.querySelector('h3').textContent = I18n.t('wm.title');
       hero.querySelector('p').textContent = I18n.t('wm.sub');
       root.appendChild(hero);
-      var path = document.createElement('div');
-      path.className = 'wm-path';
-      WELCOME_STEPS.forEach(function (s, i) {
-        var done = Welcome.done(s.id);
-        var tile = document.createElement('div');
-        tile.className = 'wm-tile' + (done ? ' clear' : (i === 0 || Welcome.done(WELCOME_STEPS[i - 1].id) ? ' active' : ' locked'));
-        var base = done ? 'tile_base_clear.svg' : (tile.className.indexOf('locked') >= 0 ? 'tile_base_locked.svg' : 'tile_base_active.svg');
-        tile.innerHTML = '<img class="wm-base" alt=""><img class="wm-ico" alt=""><div class="wm-cap"></div>';
-        tile.querySelector('.wm-base').src = 'assets/welcome_mission/' + base;
-        tile.querySelector('.wm-ico').src = 'assets/welcome_mission/' + s.icon + '.svg';
-        tile.querySelector('.wm-cap').textContent = I18n.t(s.titleKey);
-        tile.title = I18n.t(s.descKey);
-        tile.onclick = function () {
-          if (tile.classList.contains('locked')) return;
-          var dest = { talk: 'talk', map: 'world', alarm: 'alarm', skin: 'skin', quest: 'quest' };
-          if (_navigate) { try { _navigate(dest[s.id] || 'talk'); } catch (e) { /* ditto */ } }
-        };
-        path.appendChild(tile);
+
+      var day = Welcome.dayCount();
+      var lang = 'zh';
+      try { lang = I18n.lang() || 'zh'; } catch (e) {}
+      var list = document.createElement('div');
+      list.className = 'wm-groups';
+
+      WM_GROUPS.forEach(function (g) {
+        var open = day >= g.day;
+        var done = Welcome.groupDone(g);
+        var box = document.createElement('div');
+        box.className = 'wm-group' + (open ? '' : ' locked') + (done ? ' clear' : '');
+
+        var head = document.createElement('div');
+        head.className = 'wm-group-head';
+        head.innerHTML = '<span class="wm-group-title"></span><span class="wm-group-day"></span>';
+        head.querySelector('.wm-group-title').textContent = g.title;
+        head.querySelector('.wm-group-day').textContent = open
+          ? (done ? '完成' : '进行中')
+          : ('第 ' + g.day + ' 天开放');
+        box.appendChild(head);
+
+        var grid = document.createElement('div');
+        grid.className = 'wm-grid';
+        g.missions.forEach(function (m) {
+          var got = Welcome.activity(m.activity);
+          var md = Welcome.missionDone(m);
+          var tile = document.createElement('div');
+          tile.className = 'wm-tile' + (md ? ' clear' : (open ? ' active' : ' locked'));
+          tile.innerHTML = '<img class="wm-base" alt=""><img class="wm-ico" alt="">' +
+                           '<div class="wm-cap"></div><div class="wm-prog"></div>';
+          tile.querySelector('.wm-base').src = 'assets/welcome_mission/' +
+            (md ? 'tile_base_clear.svg' : (open ? 'tile_base_active.svg' : 'tile_base_locked.svg'));
+          tile.querySelector('.wm-ico').src = 'assets/welcome_mission/' + WM_ICON[m.activity] + '.svg';
+          var txt = WM_MISSION_TEXT[m.activity] || { ja: m.id, zh: m.id };
+          tile.querySelector('.wm-cap').textContent = txt[lang] || txt.zh || txt.ja;
+          /* the official unlock_condition_value is exactly this need */
+          tile.querySelector('.wm-prog').textContent = Math.min(got, m.need) + ' / ' + m.need;
+          tile.title = txt.ja;
+          grid.appendChild(tile);
+        });
+        box.appendChild(grid);
+
+        if (open && done && !Welcome.groupClaimed(g)) {
+          var btn = document.createElement('button');
+          btn.className = 'wm-claim';
+          btn.textContent = '受け取る';
+          btn.onclick = function () {
+            var r = Welcome.claimGroup(g);
+            if (r) { Welcome.render(root); if (_present) { try { _present(r); } catch (e) {} } }
+          };
+          box.appendChild(btn);
+        } else if (Welcome.groupClaimed(g)) {
+          var tag = document.createElement('div');
+          tag.className = 'wm-claimed';
+          tag.textContent = '受け取り済み';
+          box.appendChild(tag);
+        }
+        list.appendChild(box);
       });
-      root.appendChild(path);
+
+      root.appendChild(list);
     }
   };
 
