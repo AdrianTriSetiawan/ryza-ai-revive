@@ -108,8 +108,24 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        if (web != null && web.canGoBack()) web.goBack();
-        else super.onBackPressed();
+        if (web != null) {
+            if (web.canGoBack()) { web.goBack(); return; }
+            /* Every menu in this app is a DOM overlay on one page — side menu,
+               sheets, modals, full-screen views — none of them push a URL, so
+               canGoBack() is always false and the back key used to exit the app
+               instead of closing the open menu. Ask the page first: if a layer
+               consumed the press it returns true and we stay; only then exit.
+               Must run on the UI thread, which post() guarantees. */
+            web.post(() -> web.evaluateJavascript(
+                "(window.RyzaShell && RyzaShell.handleBack) ? RyzaShell.handleBack() : false",
+                value -> {
+                    boolean handled = value != null
+                            && !value.equals("false") && !value.equals("null");
+                    if (!handled) MainActivity.super.onBackPressed();
+                }));
+            return;
+        }
+        super.onBackPressed();
     }
 
     @Override
