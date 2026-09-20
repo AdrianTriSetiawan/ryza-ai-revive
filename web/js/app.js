@@ -615,15 +615,24 @@
          source names: shop/skin/save/fullscreen/chara-toggle/settings/map. */
       var side = document.getElementById('side-menu');
       var sideClose = function (fn) {
-        return function () { side.classList.remove('open'); fn(); };
+        return function () {
+          side.classList.remove('open');
+          document.body.classList.remove('side-open');
+          fn();
+        };
       };
       document.getElementById('btn-expand').onclick = function () {
         side.classList.toggle('open');
+        /* 官方：侧栏打开时右侧只剩菜单本身（截图对照过），
+           而我们的快捷钮列原来会叠在菜单项上。用 body 上的类切换显隐，
+           样式规则放在 CSS 里（不在 JS 里写内联样式）。 */
+        document.body.classList.toggle('side-open', side.classList.contains('open'));
       };
       document.addEventListener('click', function (e) {
         if (!side.classList.contains('open')) return;
         if (e.target.closest && e.target.closest('#side-menu,#btn-expand')) return;
         side.classList.remove('open');
+        document.body.classList.remove('side-open');
       }, true);
       document.getElementById('sm-shop').onclick = sideClose(function () { App.showView('quest'); });
       document.getElementById('sm-skin').onclick = sideClose(function () { App.showView('skin'); });
@@ -700,6 +709,14 @@
         }
       };
       document.getElementById('world-area').onchange = function (e) {
+        /* 地图模式下切区域要留在地图上。原来这里直接调 World.jumpArea，
+           而它是**列表**渲染器 —— 于是「切了区域就自动跳回列表」。 */
+        if (window.WorldMap && WorldMap.mode === 'map') {
+          WorldMap.areaId = e.target.value;
+          WorldMap.reset();
+          App.renderWorld();
+          return;
+        }
         World.jumpArea(e.target.value, Config.section('state').stage, App.gotoStage);
       };
       document.getElementById('btn-quest-new').onclick = function () {
@@ -1052,14 +1069,22 @@
       /* Official area plates with calibrated pins. The grid stays as the other
          mode: the map is additive, World.render() is untouched. */
       if (window.WorldMap && WorldMap.mode === 'map') {
+        /* 官方形态：地图铺满整屏（区域选择改用地图自带的底部条 + 弹层），
+           所以这里给世界页挂一个类，让头部与侧栏让位。 */
+        var view = document.getElementById('view-world');
+        if (view) view.classList.add('map-mode');
         WorldMap.render(fields, st, {
           onPickStage: App.gotoStage,
           onPickArea: function (areaId) {
             var sel2 = document.getElementById('world-area');
             if (sel2) sel2.value = areaId;
-          }
+          },
+          /* 地图模式下头部被隐藏，列表键在地图底部条里 */
+          onToggleList: function () { App.toggleWorldMode(); }
         });
       } else {
+        var view2 = document.getElementById('view-world');
+        if (view2) view2.classList.remove('map-mode');
         World.render(fields,
                      document.getElementById('world-npcs'),
                      st.stage, App.gotoStage);

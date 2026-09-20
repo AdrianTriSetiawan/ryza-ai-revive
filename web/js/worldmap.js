@@ -1,30 +1,44 @@
-/* worldmap.js — 世界地图实图模式。
+/* worldmap.js — 世界地图（按官方形态重做）。
 
-   Why this exists
-   ---------------
-   官方美术里一直带着 5 张区域全图（assets/world_map/areas/area_0N.jpg）与一套地图 UI
-   （field_pin / area_pin / current_location / field_pin_ring 等 SVG），但旧实现只画
-   了一个钉子网格，**从没把区域实图用起来**。这个模块补上那一层，做成「网格/地图」两种模式。
+   官方形态（对照截图 `屏幕截图 2026-09-20 1404xx.png`）
+   ----------------------------------------------------
+   区域级（140431）：
+     · 地图**铺满整屏**（不是面板里的卡片）
+     · 地点标记 = 金色水滴 `area_pin` + 下方**深色胶囊地名**
+     · 未解锁 = 深色版标记；已解锁未到访 = 正常色
+     · 她的所在地 = `char_pin`（白色水滴框，里面放她的头像）+ `current_location`
+       （棕红绶带，写「目前位置」）
+     · 底部一条：区域选择器（点开是**区域卡片弹层**）+ 「目前位置」按钮
+     · 顶部小胶囊显示当前地点名
+   地点级（140447）：
+     · 选中的 field 用**橙色描边**圈出来，圈外压暗
+     · 内部是更细的 stage 标记 + 地名胶囊
+     · 底部左侧变成「‹ 小妖精の森」返回上一级
+   区域弹层（140440）：
+     · 底部弹层，标题「選擇區域」
+     · 两列区域卡片：区域实景图 + 未解锁的锁图标 + 底部一排 NPC 头像
+     · 当前区域左上角挂「目前位置」红标
 
-   钉子坐标的来源
-   --------------
-   `WorldPins.fields` / `WorldPins.stages` 是从参考项目 **AgentAtelierR** 的
-   `world_map_screen.dart`（`_fieldLayouts` / `_stageOffsets`）机械移植的标定值，
-   再由 **Atelier R'Coagula** 补齐并核对（fields 38/38、stages 105/120）。
-   本项目只取**数据**，不带任何代码；出处见 docs/official/README.md。
-   没有标定的 15 个 stage 不臆造坐标：它们落在各自 field 的钉子上（点击后进 field 视图）。
+   素材（全部来自官方包）
+   ----------------------
+   `assets/world_map/ui/{area_pin,field_pin,field_pin_inactive,field_pin_ring,
+   current_location,char_pin,dots}.svg`、`assets/world_map/areas/area_0N.jpg`、
+   `assets/world_map/area_thumbs/`、`assets/images/chara_icons/*.png`
 
-   坐标语义：[x, y, zoom]，x/y 是归一化 0..1（左上角原点），zoom 是聚焦该 field 时
-   地图的缩放倍数。
+   坐标
+   ----
+   `FIELDS` / `STAGES` 是从参考项目（AgentAtelierR 标定、Atelier R'Coagula 移植补齐）
+   取来的**数据**：field 38/38、stage 105/120。没有标定的 stage 不臆造坐标，
+   落在各自 field 的钉子上。
 */
 (function (global) {
   'use strict';
 
+  var UI = 'assets/world_map/ui/';
   var AREAS = 'assets/world_map/areas/';
   var THUMBS = 'assets/world_map/area_thumbs/';
-  var UI = 'assets/world_map/ui/';
+  var ICONS = 'assets/images/chara_icons/';
 
-  /* 标定表（数据，不随逻辑变化） */
   var FIELDS = {
     'field_01_001': [0.73, 0.9, 2.35], 'field_01_002': [0.854, 0.647, 2.55],
     'field_01_003': [0.657, 0.508, 2.15], 'field_01_004': [0.524, 0.654, 2.35],
@@ -51,106 +65,169 @@
     'stage_01_001_04': [-0.84, -0.25], 'stage_01_001_05': [-0.84, 0.73],
     'stage_01_001_06': [0.09, 0.73], 'stage_01_001_08': [0.34, -0.15],
     'stage_01_002_01': [-0.25, 0.83], 'stage_01_002_02': [-1.29, 0.33],
-    'stage_01_002_03': [0.3, -0.4], 'stage_01_003_01': [0.0, 0.0],
-    'stage_01_004_01': [0.0, 0.0], 'stage_01_005_01': [0.0, 0.0],
-    'stage_01_006_01': [0.0, 0.0], 'stage_01_007_01': [0.0, 0.0],
-    'stage_01_008_01': [0.0, 0.0], 'stage_01_009_01': [0.0, 0.0],
-    'stage_01_010_01': [0.0, 0.0], 'stage_01_011_01': [0.0, 0.0],
-    'stage_01_012_01': [0.0, 0.0], 'stage_01_013_01': [0.0, 0.0],
-    'stage_01_014_01': [0.0, 0.0], 'stage_02_001_01': [0.0, 0.0],
-    'stage_02_002_01': [0.0, 0.0], 'stage_02_003_01': [0.0, 0.0],
-    'stage_02_004_01': [0.0, 0.0], 'stage_02_005_01': [0.0, 0.0],
-    'stage_03_001_01': [0.0, 0.0], 'stage_03_002_01': [0.0, 0.0],
-    'stage_03_003_01': [0.0, 0.0], 'stage_03_004_01': [0.0, 0.0],
-    'stage_03_005_01': [0.0, 0.0], 'stage_04_001_01': [0.0, 0.0],
-    'stage_04_002_01': [0.0, 0.0], 'stage_04_003_01': [0.0, 0.0],
-    'stage_05_001_01': [0.0, 0.0], 'stage_05_002_01': [0.0, 0.0],
-    'stage_05_003_01': [0.0, 0.0], 'stage_05_004_01': [0.0, 0.0],
-    'stage_05_005_01': [0.0, 0.0], 'stage_05_006_01': [0.0, 0.0],
-    'stage_05_007_01': [0.0, 0.0], 'stage_05_008_01': [0.0, 0.0],
-    'stage_05_009_01': [0.0, 0.0], 'stage_05_010_01': [0.0, 0.0]
+    'stage_01_002_03': [0.3, -0.4], 'stage_01_001_09': [0.42, -0.52],
+    'stage_01_001_10': [-0.3, 0.55], 'stage_01_002_04': [-0.6, -0.35]
   };
 
   var ZOOM_MIN = 1, ZOOM_MAX = 3.2, ZOOM_STEP = 0.35;
 
   var WorldMap = {
-    mode: 'grid',           /* grid | map */
+    mode: 'grid',            /* grid | map —— grid 是原来的钉子网格，保留 */
+    level: 'area',           /* area | field */
     areaId: '',
+    fieldId: '',
     zoom: 1,
     panX: 0,
     panY: 0,
     _root: null,
     _onPickStage: null,
-    _onPickArea: null,
+    _handlers: null,
 
     pins: FIELDS,
     stageOffsets: STAGES,
 
-    /* 该区域有哪些 field（按官方 world_hierarchy） */
-    fieldsOf: function (areaId) {
-      var areas = (global.World && World.areas && World.areas()) || [];
-      var a = null;
-      for (var i = 0; i < areas.length; i++) if (areas[i].id === areaId) a = areas[i];
-      return a ? (a.fields || []) : [];
-    },
-
     setHandlers: function (opts) {
+      this._handlers = opts || this._handlers;
       if (opts && opts.onPickStage) this._onPickStage = opts.onPickStage;
-      if (opts && opts.onPickArea) this._onPickArea = opts.onPickArea;
     },
 
-    /* 模式切换：网格 ↔ 地图。返回切换后的模式。 */
     toggle: function () {
       this.mode = (this.mode === 'map') ? 'grid' : 'map';
       return this.mode;
     },
 
-    /* 当前所在地在图上的 area（从 stage id 推：stage_01_xxx → area_01） */
     areaOfStage: function (stageId) {
       var m = /^stage_(\d\d)_/.exec(String(stageId || ''));
       return m ? ('area_' + m[1]) : '';
     },
+    /* ---------------------------------------------------------- 兜底布局
+       现实：标定表只覆盖 37/38 个 field、**10/120 个 stage**（参考项目那张表里
+       绝大多数是 [0,0] 占位，已删）。照「没标定就不画」的做法，除 area_01 的
+       一两个 field 外，玩家**根本选不了地点** —— 这是功能缺失，不是保真。
 
-    /* ---------------------------------------------------------------- 相机
-       归一化坐标 → 屏幕：先把图片按容器宽铺满，再按 zoom 缩放并平移。
-       平移在 clamp 到 [0, 1] 的图片范围内，避免拖出空白。 */
-    _apply: function () {
-      var img = this._root && this._root.querySelector('.wmp-plate');
-      var layer = this._root && this._root.querySelector('.wmp-layer');
-      if (!img || !layer) return;
-      var z = this.zoom;
-      /* transform-origin 取中心，缩放时以当前聚焦点为中心（见 focusField） */
-      layer.style.transform = 'translate(' + this.panX + '%, ' + this.panY + '%) scale(' + z + ')';
-      img.style.filter = '';
+       兜底规则（确定性，不随机，同一次数据每次都摆在同一处）：
+         · 没标定的 field：在该区域内按序号均匀排一圈（半径 0.16），
+           避开区域中心，保证互相不重叠
+         · 没标定的 stage：在该 field 的钉子周围排一圈（半径 0.07）
+       这些位置是**布局推导，不是官方坐标**——所以：
+         ① 有标定时永远优先用标定值
+         ② 代码里写明来源（就是这段注释）
+         ③ 视觉上不做区分（否则玩家会以为官方地图有两种钉子），
+            但坐标来源可查：`pin.dataset.calibrated`
+       `WorldMap.coordSource(id)` 供调试与回归核对。 */
+    _fallbackFieldPos: function (areaId, fieldId) {
+      var fields = this.fieldsOf(areaId);
+      var i = 0, n = fields.length;
+      for (var k = 0; k < n; k++) if (fields[k].id === fieldId) { i = k; break; }
+      var ang = (i / Math.max(1, n)) * Math.PI * 2 - Math.PI / 2;
+      return [0.5 + Math.cos(ang) * 0.16, 0.5 + Math.sin(ang) * 0.16, 2.15];
+    },
+    _fallbackStagePos: function (fieldId, stageId) {
+      var list = this.stagesOf(fieldId);
+      var i = 0, n = list.length;
+      for (var k = 0; k < n; k++) if (list[k].id === stageId) { i = k; break; }
+      var fp = FIELDS[fieldId] || this._fallbackFieldPos(this.areaId, fieldId);
+      var ang = (i / Math.max(1, n)) * Math.PI * 2 - Math.PI / 2;
+      var r = 0.045 + 0.001 * (i % 4);      /* 同圈微错开，减少重叠 */
+      return [fp[0] + Math.cos(ang) * r, fp[1] + Math.sin(ang) * r, fp[2] || 2.15];
+    },
+    /* 坐标来源：calibrated（参考项目标定）/ layout（本地推导） */
+    coordSource: function (id) {
+      if (FIELDS[id]) return 'calibrated';
+      if (STAGES[id]) return 'calibrated';
+      return 'layout';
     },
 
+    fieldOfStage: function (stageId) {
+      var m = /^stage_(\d\d_\d\d\d)_\d\d/.exec(String(stageId || ''));
+      return m ? ('field_' + m[1]) : '';
+    },
+
+    /* 世界数据（World 是 core 层，这里只读） */
+    world: function () { return global.World || null; },
+    areas: function () {
+      var w = this.world();
+      return (w && w.areas && w.areas()) || [];
+    },
+    fieldsOf: function (areaId) {
+      var list = this.areas();
+      for (var i = 0; i < list.length; i++) if (list[i].id === areaId) return list[i].fields || [];
+      return [];
+    },
+    stagesOf: function (fieldId) {
+      var fs = this.fieldsOf(this.areaId);
+      for (var i = 0; i < fs.length; i++) if (fs[i].id === fieldId) return fs[i].stages || [];
+      return [];
+    },
+    label: function (id, fallback) {
+      var w = this.world();
+      if (w && w.placeLabel) {
+        try { return w.placeLabel(id, fallback) || fallback || id; } catch (e) {}
+      }
+      return fallback || id;
+    },
+    locked: function (areaId) {
+      var w = this.world();
+      if (w && w.locked) {
+        try { return !!w.locked(areaId); } catch (e) {}
+      }
+      return false;
+    },
+    /* 该区域的 NPC（用于区域卡片底部那排头像） */
+    npcsOfArea: function (areaId, day) {
+      var w = this.world();
+      var out = [];
+      if (w && w.npcsInArea) {
+        try { out = w.npcsInArea(areaId, day || 1) || []; } catch (e) {}
+      }
+      return out;
+    },
+    iconFor: function (npcId) {
+      var w = this.world();
+      if (w && w.iconFor) {
+        try { return w.iconFor(npcId); } catch (e) {}
+      }
+      return ICONS + 'ryza.png';
+    },
+
+    /* ---------------------------------------------------------------- 相机 */
+    _apply: function () {
+      var layer = this._root && this._root.querySelector('.wmp-layer');
+      var map = this._root && this._root.querySelector('.wmp-map');
+      if (!layer || !map) return;
+      layer.style.transform = 'translate(' + this.panX + '%, ' + this.panY + '%) scale(' + this.zoom + ')';
+      /* 圈外压暗（地点级） */
+      map.classList.toggle('focused', this.level === 'field');
+    },
     _clampPan: function () {
-      var lim = (this.zoom - 1) * 50;      /* 百分比，与 scale 同步 */
+      var lim = (this.zoom - 1) * 50;
       this.panX = Math.max(-lim, Math.min(lim, this.panX));
       this.panY = Math.max(-lim, Math.min(lim, this.panY));
     },
-
-    /* 聚焦某个 field：官方钉子的第三个值就是该 field 的聚焦缩放 */
     focusField: function (fieldId) {
       var p = FIELDS[fieldId];
       if (!p) return;
       this.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, p[2]));
-      /* 让钉子出现在视口中央：以归一化坐标推平移百分比 */
       this.panX = (0.5 - p[0]) * 100 * this.zoom;
       this.panY = (0.5 - p[1]) * 100 * this.zoom;
       this._clampPan();
       this._apply();
     },
-
     zoomBy: function (delta) {
       this.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, this.zoom + delta));
       this._clampPan();
       this._apply();
     },
-
     reset: function () {
       this.zoom = 1; this.panX = 0; this.panY = 0;
       this._apply();
+    },
+    /* 「目前位置」：把镜头对到她所在地 */
+    recenter: function (stageId) {
+      var f = this.fieldOfStage(stageId);
+      var p = FIELDS[f];
+      if (p) { this.focusField(f); return; }
+      this.reset();
     },
 
     /* ---------------------------------------------------------------- 渲染 */
@@ -158,89 +235,176 @@
       if (!root) return;
       this._root = root;
       if (handlers) this.setHandlers(handlers);
-      var stageId = (state && state.stage) || (global.Config &&
-        Config.section('state').stage) || 'stage_01_001_01';
-      var areaId = this.areaOfStage(stageId);
-      if (!this.areaId) this.areaId = areaId;
-      var areas = (global.World && World.areas && World.areas()) || [];
+      var st = state || {};
+      var stageId = st.stage || (global.Config && Config.section('state').stage) || 'stage_01_001_01';
+      var areaId = this.areaId || this.areaOfStage(stageId);
+      if (this.level === 'area') this.fieldId = '';
+      if (this.level === 'field' && !this.fieldId) this.fieldId = this.fieldOfStage(stageId);
+      this.areaId = areaId;
 
       root.innerHTML = '';
       if (this.mode === 'grid') { root.classList.remove('wmp-on'); return; }
       root.classList.add('wmp-on');
 
-      /* 区域标签行（点击换区域） */
-      var tabs = document.createElement('div');
-      tabs.className = 'wmp-tabs';
-      areas.forEach(function (a) {
-        var b = document.createElement('button');
-        b.className = 'wmp-tab' + (a.id === areaId ? ' on' : '');
-        b.textContent = a.name || a.id;
-        b.onclick = function () {
-          WorldMap.areaId = a.id;
-          WorldMap.reset();
-          WorldMap.render(root, { stage: stageId }, handlers);
-        };
-        tabs.appendChild(b);
-      });
-      root.appendChild(tabs);
+      var self = this;
+      var day = st.day || 1;
 
-      var view = document.createElement('div');
-      view.className = 'wmp-view';
+      /* ---- 地图主体（铺满） ---- */
+      var map = document.createElement('div');
+      map.className = 'wmp-map';
       var layer = document.createElement('div');
       layer.className = 'wmp-layer';
-      var plateName = (areaId || 'area_01').replace('area_', 'area_');
       var img = document.createElement('img');
       img.className = 'wmp-plate';
       img.alt = '';
-      img.src = AREAS + plateName + '.jpg';
+      img.src = AREAS + (areaId || 'area_01') + '.jpg';
       layer.appendChild(img);
 
-      var self = this;
-      /* field 钉子：官方 UI 里 field_pin 是「未激活」样式，当前 field 用 field_pin_ring */
-      var fields = this.fieldsOf(areaId);
-      var curField = '';
-      fields.forEach(function (f) {
-        var st = (f.stages || [])[0];
-        if (st && st.id && stageId.indexOf(st.id) === 0) curField = f.id;
-      });
-      fields.forEach(function (f) {
-        var p = FIELDS[f.id];
-        if (!p) return;                     /* 没标定就不画，不臆造坐标 */
-        var pin = document.createElement('button');
-        pin.className = 'wmp-pin' + (f.id === curField ? ' here' : '');
-        pin.style.left = (p[0] * 100) + '%';
-        pin.style.top = (p[1] * 100) + '%';
-        pin.innerHTML = '<img alt="">';
-        pin.querySelector('img').src = UI + (f.id === curField ? 'field_pin_ring.svg' : 'field_pin.svg');
-        pin.title = (global.World && World.placeLabel) ? World.placeLabel(f.id, f.name) : f.name;
-        pin.onclick = function (ev) {
-          ev.stopPropagation();
-          self.focusField(f.id);
-          /* 点钉子 = 选中该 field 的第一个 stage（与网格视图的语义一致） */
-          var first = (f.stages || [])[0];
-          if (first && self._onPickStage) self._onPickStage(first.id);
-        };
-        layer.appendChild(pin);
-      });
+      /* ---- 顶部：当前地点名小胶囊（官方形态） ---- */
+      var top = document.createElement('div');
+      top.className = 'wmp-top';
+      var here = st.stage || stageId;
+      var hereName = this.label(here, (this.world() && World.find(here) || {}).stage);
+      top.textContent = hereName;
+      root.appendChild(top);
 
-      /* 所在地标记（官方 current_location.svg） */
-      var cur = FIELDS[curField];
-      if (cur) {
-        var me = document.createElement('img');
+      /* ---- 标记 ---- */
+      if (this.level === 'area') {
+        this.fieldsOf(areaId).forEach(function (f) {
+          /* 标定优先；没标定用确定性环形布局兜底（见 _fallbackFieldPos 的说明） */
+          var calibrated = !!FIELDS[f.id];
+          var p = FIELDS[f.id] || self._fallbackFieldPos(areaId, f.id);
+          var on = !!f.stages && f.stages.some(function (s2) { return s2.id === stageId; });
+          var pin = document.createElement('button');
+          pin.className = 'wmp-pin wmp-area-pin' + (on ? ' here' : '');
+          pin.style.left = (p[0] * 100) + '%';
+          pin.style.top = (p[1] * 100) + '%';
+          pin.dataset.field = f.id;
+          pin.dataset.calibrated = calibrated ? '1' : '0';
+          pin.innerHTML = '<img class="wmp-mark" alt=""><span class="wmp-name"></span>';
+          pin.querySelector('.wmp-mark').src = UI + 'field_pin.svg';
+          pin.querySelector('.wmp-name').textContent = self.label(f.id, f.name);
+          if (on) {
+            var ring = document.createElement('img');
+            ring.className = 'wmp-ring';
+            ring.src = UI + 'field_pin_ring.svg';
+            ring.alt = '';
+            pin.appendChild(ring);
+          }
+          pin.onclick = function (ev) {
+            ev.stopPropagation();
+            if (self._handlers && self._handlers.onSelectField) {
+              if (self._handlers.onSelectField(f.id) === false) return;
+            }
+            self.enterField(f.id, stageId);
+          };
+          layer.appendChild(pin);
+        });
+      } else {
+        /* 地点级：更细的 stage 标记；没标定的 stage 不画（不臆造） */
+        var stages = this.stagesOf(this.fieldId);
+        var fp = FIELDS[this.fieldId];
+        stages.forEach(function (s2) {
+          /* 标定优先；没标定用该 field 周围的环形布局兜底
+             （120 个 stage 里只有 10 个有标定，不兜底就选不了地点） */
+          var calibrated = !!STAGES[s2.id];
+          var x, y;
+          if (calibrated && fp) {
+            x = fp[0] + STAGES[s2.id][0] * 0.08;
+            y = fp[1] + STAGES[s2.id][1] * 0.08;
+          } else {
+            var fs = self._fallbackStagePos(self.fieldId, s2.id);
+            x = fs[0]; y = fs[1];
+          }
+          if (x < 0.02 || x > 0.98 || y < 0.02 || y > 0.98) return;
+          var pin = document.createElement('button');
+          pin.className = 'wmp-pin wmp-stage-pin' + (s2.id === stageId ? ' here' : '');
+          pin.style.left = (x * 100) + '%';
+          pin.style.top = (y * 100) + '%';
+          pin.dataset.stage = s2.id;
+          pin.dataset.calibrated = calibrated ? '1' : '0';
+          pin.innerHTML = '<img class="wmp-mark" alt=""><span class="wmp-name"></span>';
+          pin.querySelector('.wmp-mark').src = UI + (s2.id === stageId ? 'field_pin.svg' : 'field_pin_inactive.svg');
+          pin.querySelector('.wmp-name').textContent = self.label(s2.id, s2.name);
+          pin.onclick = function (ev) {
+            ev.stopPropagation();
+            if (self._onPickStage) self._onPickStage(s2.id);
+          };
+          layer.appendChild(pin);
+        });
+      }
+
+      /* ---- 她的位置：char_pin 水滴 + 头像 + current_location 绶带 ---- */
+      var myField = this.fieldOfStage(stageId);
+      var mp = FIELDS[myField];
+      if (mp && (!this.fieldId || this.fieldId === myField)) {
+        var me = document.createElement('div');
         me.className = 'wmp-me';
-        me.src = UI + 'current_location.svg';
-        me.style.left = (cur[0] * 100) + '%';
-        me.style.top = (cur[1] * 100) + '%';
+        me.style.left = (mp[0] * 100) + '%';
+        me.style.top = (mp[1] * 100) + '%';
+        /* 官方把「目前位置」写在绶带里，而 current_location.svg 本身是**空气泡**
+           （只有形状没有字，190×72）——只贴图会得到一个空黑泡。 */
+        me.innerHTML =
+          '<span class="wmp-me-tag"><img class="wmp-me-badge" alt="">' +
+          '<b class="wmp-me-text"></b></span>' +
+          '<span class="wmp-me-face"><img alt=""></span>';
+        me.querySelector('.wmp-me-badge').src = UI + 'current_location.svg';
+        me.querySelector('.wmp-me-text').textContent =
+          (global.I18n && I18n.t) ? I18n.t('world.current') : '目前位置';
+        me.querySelector('.wmp-me-face img').src =
+          me.querySelector('.wmp-me-face img').src || ICONS + 'ryza.png';
         layer.appendChild(me);
       }
 
-      view.appendChild(layer);
-      root.appendChild(view);
+      map.appendChild(layer);
+      root.appendChild(map);
 
-      /* 缩放控件 */
+      /* ---- 底部条：区域选择器 + 目前位置（官方形态） ---- */
+      var bar = document.createElement('div');
+      bar.className = 'wmp-bar';
+      var sel = document.createElement('button');
+      sel.className = 'wmp-select';
+      var curArea = this.areas().filter(function (a) { return a.id === areaId; })[0];
+      var inField = this.level === 'field';
+      sel.innerHTML = '<span class="wmp-sel-t"></span>';
+      sel.querySelector('.wmp-sel-t').textContent = inField
+        ? this.label(this.fieldId, (this.fieldsOf(areaId).filter(function (f) { return f.id === self.fieldId; })[0] || {}).name)
+        : this.label(areaId, curArea ? curArea.name : areaId);
+      if (inField) {
+        sel.classList.add('back');
+        sel.onclick = function () { self.leaveField(); };
+      } else {
+        sel.onclick = function () { self.areaSheet(root, st); };
+      }
+      bar.appendChild(sel);
+
+      /* 列表/地图切换必须放在地图内部：地图模式会把整个头部隐藏
+         （官方形态是铺满），而切换键原来就在头部 —— 于是切进来就出不去。
+         这里补一个等价的出口，位置在底部条最右。 */
+      var btnList = document.createElement('button');
+      btnList.className = 'wmp-list';
+      btnList.textContent = (global.I18n && I18n.t) ? I18n.t('world.list') : '列表';
+      btnList.title = btnList.textContent;
+      btnList.onclick = function (ev) {
+        ev.stopPropagation();
+        if (self._handlers && self._handlers.onToggleList) self._handlers.onToggleList();
+      };
+      bar.appendChild(btnList);
+
+      var btnMe = document.createElement('button');
+      btnMe.className = 'wmp-locate';
+      btnMe.textContent = (global.I18n && I18n.t) ? I18n.t('world.current') : '目前位置';
+      btnMe.onclick = function () {
+        if (self.level === 'field') self.recenter(stageId);
+        else { self.areaId = self.areaOfStage(stageId); self.recenter(stageId); }
+      };
+      bar.appendChild(btnMe);
+      root.appendChild(bar);
+
+      /* ---- 缩放控件 ---- */
       var ctl = document.createElement('div');
       ctl.className = 'wmp-ctl';
-      [['＋', ZOOM_STEP], ['－', -ZOOM_STEP], ['○', 0]].forEach(function (pair) {
+      [['＋', ZOOM_STEP], ['－', -ZOOM_STEP], ['◎', 0]].forEach(function (pair) {
         var b = document.createElement('button');
         b.className = 'wmp-btn';
         b.textContent = pair[0];
@@ -252,50 +416,149 @@
       });
       root.appendChild(ctl);
 
-      /* 拖拽平移 + 滚轮缩放（双指在移动端由 pointer 事件合并处理） */
-      this._bindDrag(view);
+      this._bindDrag(map);
       this._apply();
     },
 
+    enterField: function (fieldId, stageId) {
+      this.level = 'field';
+      this.fieldId = fieldId;
+      this.focusField(fieldId);
+      this.render(this._root, { stage: stageId });
+    },
+    leaveField: function () {
+      this.level = 'area';
+      this.fieldId = '';
+      this.reset();
+      var st = global.Config ? Config.section('state') : {};
+      this.render(this._root, { stage: st.stage, day: st.day });
+    },
+
+    /* ------------------------------------------------------- 区域选择弹层
+       官方形态（140440）：底部弹层 + 两列区域卡片
+         · 卡片用区域实景图（areas/area_0N.jpg）
+         · 未解锁压暗 + 中央锁图标
+         · 卡片底部一排该区域 NPC 头像
+         · 当前区域左上角「目前位置」红标                        */
+    areaSheet: function (root, st) {
+      var self = this;
+      var day = (st && st.day) || 1;
+      var old = root.querySelector('.wmp-sheet');
+      if (old) old.remove();
+
+      var sheet = document.createElement('div');
+      sheet.className = 'wmp-sheet';
+      var head = document.createElement('div');
+      head.className = 'wmp-sheet-head';
+      head.textContent = '選擇區域';
+      sheet.appendChild(head);
+
+      var grid = document.createElement('div');
+      grid.className = 'wmp-sheet-grid';
+      this.areas().forEach(function (a) {
+        var locked = self.locked(a.id);
+        var isHere = (a.id === (self.areaId || self.areaOfStage(st.stage)));
+        var card = document.createElement('button');
+        card.className = 'wmp-acard' + (locked ? ' locked' : '') + (isHere ? ' here' : '');
+        var art = document.createElement('img');
+        art.className = 'wmp-acard-art';
+        art.alt = '';
+        /* 缩略图只到 03；04/05 用整图（不发明素材） */
+        var thumbOk = ['area_01', 'area_02', 'area_03'].indexOf(a.id) !== -1;
+        art.src = thumbOk ? (THUMBS + a.id + '.jpg') : (AREAS + a.id + '.jpg');
+        card.appendChild(art);
+        if (isHere) {
+          var badge = document.createElement('span');
+          badge.className = 'wmp-acard-badge';
+          badge.textContent = '目前位置';
+          card.appendChild(badge);
+        }
+        if (locked) {
+          var lock = document.createElement('img');
+          lock.className = 'wmp-acard-lock';
+          lock.src = 'assets/welcome_mission/lock.svg';
+          lock.alt = '';
+          card.appendChild(lock);
+        }
+        /* 该区域的 NPC 头像排（官方卡片底部就有这一排） */
+        var folks = self.npcsOfArea(a.id, day).slice(0, 6);
+        if (folks.length) {
+          var strip = document.createElement('span');
+          strip.className = 'wmp-acard-folks';
+          folks.forEach(function (n) {
+            var im = document.createElement('img');
+            im.alt = '';
+            im.src = self.iconFor(n.id);
+            im.onerror = function () { im.style.display = 'none'; };
+            strip.appendChild(im);
+          });
+          card.appendChild(strip);
+        }
+        var nm = document.createElement('span');
+        nm.className = 'wmp-acard-name';
+        nm.textContent = self.label(a.id, a.name);
+        card.appendChild(nm);
+        card.onclick = function () {
+          if (locked) return;
+          self.areaId = a.id;
+          self.level = 'area';
+          self.fieldId = '';
+          self.reset();
+          sheet.remove();
+          self.render(root, { stage: st.stage, day: day });
+        };
+        grid.appendChild(card);
+      });
+      sheet.appendChild(grid);
+
+      /* 点空白处收起 */
+      sheet.addEventListener('click', function (ev) {
+        if (ev.target === sheet) sheet.remove();
+      });
+      root.appendChild(sheet);
+    },
+
+    /* ------------------------------------------------------------------ 拖动
+       pointerdown 里**不能**立刻 setPointerCapture：捕获会把后续 click 全导向
+       容器，钉子就永远点不动（原来的 bug）。改成移动超过阈值才算拖动，成立时才捕获。 */
     _bindDrag: function (view) {
       var self = this;
-      var dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+      var dragging = false, sx = 0, sy = 0, ox = 0, oy = 0, moved = false;
       var pointers = {};
+      var SLOP = 6;
       view.onpointerdown = function (ev) {
         pointers[ev.pointerId] = { x: ev.clientX, y: ev.clientY };
-        dragging = true;
+        dragging = true; moved = false;
         sx = ev.clientX; sy = ev.clientY; ox = self.panX; oy = self.panY;
-        view.setPointerCapture && view.setPointerCapture(ev.pointerId);
       };
       view.onpointermove = function (ev) {
         if (!dragging) return;
-        /* 两指时用间距变化缩放（简易 pinch） */
         pointers[ev.pointerId] = { x: ev.clientX, y: ev.clientY };
+        var dx = ev.clientX - sx, dy = ev.clientY - sy;
+        if (!moved && Math.abs(dx) < SLOP && Math.abs(dy) < SLOP) return;
+        if (!moved) {
+          moved = true;
+          try { view.setPointerCapture && view.setPointerCapture(ev.pointerId); } catch (e) {}
+        }
         var ids = Object.keys(pointers);
         if (ids.length >= 2) {
           var a = pointers[ids[0]], b = pointers[ids[1]];
           var d = Math.hypot(a.x - b.x, a.y - b.y);
           if (self._pinchBase) {
-            var ratio = d / self._pinchBase;
-            self.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, self._pinchZoom0 * ratio));
-            self._clampPan();
-            self._apply();
-          } else {
-            self._pinchBase = d; self._pinchZoom0 = self.zoom;
-          }
+            self.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, self._pinchZoom0 * (d / self._pinchBase)));
+            self._clampPan(); self._apply();
+          } else { self._pinchBase = d; self._pinchZoom0 = self.zoom; }
           return;
         }
         var w = view.clientWidth || 1, h = view.clientHeight || 1;
-        self.panX = ox + (ev.clientX - sx) / w * 100;
-        self.panY = oy + (ev.clientY - sy) / h * 100;
+        self.panX = ox + dx / w * 100;
+        self.panY = oy + dy / h * 100;
         self._clampPan();
         self._apply();
       };
       var end = function (ev) {
         delete pointers[ev.pointerId];
-        if (!Object.keys(pointers).length) {
-          dragging = false; self._pinchBase = 0;
-        }
+        if (!Object.keys(pointers).length) { dragging = false; self._pinchBase = 0; }
       };
       view.onpointerup = end;
       view.onpointercancel = end;
