@@ -24,7 +24,7 @@ The three hosts share one proxy contract, `GET/POST /_proxy`, so browser and Web
 
 三端共用 `/_proxy`。开发请用 `scripts/serve.py`，不要用 `python -m http.server`。
 
-Inference is not bundled. Settings require an OpenAI-compatible base URL, model identifier, and API key; TTS is optional and uses per-provider credential fields (`openai` / `qwen` / `fish`).
+Inference is not bundled. Settings require an OpenAI-compatible base URL, model identifier, and API key; TTS is optional and uses per-provider credential fields (`openai` / `qwen` / `fish`). NSFW/undress is disabled by default and can only be enabled explicitly in Settings; the AI cannot enable it while permission is off.
 
 推理与语音不随仓库分发，由设置页配置。
 
@@ -50,7 +50,7 @@ Structural tables (JSON, atlas, SVG) live in `web/assets/` and are versioned wit
 结构表随仓库版本管理；体积较大的栅格图、音频与骨骼二进制在完整运行或打包前本地恢复：
 
 ```powershell
-python scripts/restore_media.py path\to\RyzaChat-1.2.18.apk
+python scripts/restore_media.py path\to\RyzaChat-1.2.19.apk
 python scripts/restore_media.py path\to\win-unpacked\resources\web
 ```
 

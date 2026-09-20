@@ -252,9 +252,15 @@ for (const f of ['util.js', 'config.js', 'i18n.js', 'api.js', 'providers.js', 't
     sandbox.Nsfw.onTurn({ nsfw: null });
     ok(!sandbox.Nsfw.active(), 'omitted tag does not strip');
     sandbox.Nsfw.onTurn(nsfwTag);
-    ok(sandbox.Nsfw.active(), 'llm nsfw:on strips');
+    ok(!sandbox.Nsfw.active(), 'disabled setting blocks llm nsfw:on');
+    sandbox.Nsfw.setEnabled(true);
+    ok(sandbox.Nsfw.active(), 'settings toggle enables nsfw');
     ok(/肌が見えている/.test(sandbox.Nsfw.screenFact()),
        'prompt tells the LLM she is undressed');
+    sandbox.Nsfw.setEnabled(false);
+    ok(!sandbox.Nsfw.active(), 'settings toggle dresses and blocks nsfw');
+    sandbox.Nsfw.onTurn(nsfwTag);
+    ok(!sandbox.Nsfw.active(), 'disabled setting continues blocking llm nsfw:on');
     sandbox.Nsfw.reset();
     ok(!sandbox.Nsfw.active(), 'reset clears nsfw');
 
@@ -324,6 +330,9 @@ for (const f of ['util.js', 'config.js', 'i18n.js', 'api.js', 'providers.js', 't
     ok(sandbox.App._typeGen === genAfterStart + 1, 'second type chain bumps the gen token');
 
     /* ---- the two render-layer ports (wired in App.init, asserted here) ---- */
+    /* Permission is the gate, so grant it first: this block is about the port,
+       not about the gate (the gate itself is asserted further up). */
+    sandbox.Nsfw.setEnabled(true);
     ok(sandbox.Nsfw.onTurn({ nsfw: true }) === undefined && sandbox.Nsfw.active(),
        'nsfw port: the tag still reaches the module');
     ok(variantCalls.indexOf('nsfw') >= 0,
@@ -331,6 +340,7 @@ for (const f of ['util.js', 'config.js', 'i18n.js', 'api.js', 'providers.js', 't
     sandbox.Nsfw.reset();
     ok(variantCalls[variantCalls.length - 1] === 'default',
        'nsfw port: reset routes through the same sink');
+    sandbox.Nsfw.setEnabled(false);   /* leave the sandbox as we found it */
 
     Avatar.screenState = () => ({ emotion: 'shy', attitude: 'deny' });
     ok(/emotion:shy/.test(sandbox.Api.screenTagLine()) &&

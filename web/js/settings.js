@@ -330,6 +330,11 @@
         function (v) { Config.set('app.vibration', v); });
       App._switch(w, T('settings.rim'), Config.section('app').rim !== false,
         function (v) { Config.set('app.rim', v); });
+      /* NSFW 是「用户授权」，不是角色扮演开关：关着的时候模型说什么都不脱。
+         闸门在 nsfw.js，这里只管写 Config.app.nsfwEnabled。
+         设置页要能在无宿主环境下独立加载，所以先问 window。 */
+      App._switch(w, T('settings.nsfw'), !!(window.Nsfw && Nsfw.enabled()),
+        function (v) { if (window.Nsfw) Nsfw.setEnabled(v); });
       App._switch(w, T('settings.stt'), Config.section('app').stt !== 'off',
         function (v) {
           /* 'on' going forward; an old save holding 'webSpeech' also means on,
