@@ -120,7 +120,11 @@
     "settings": "ui",
     "worldmap": "render",
     "crfstore": "features",
-    "_comment_crfstore": "本地服装导入：IndexedDB 存文件 + ZIP 校验。属 features（可拔插玩法），只被 ui 层调用。"
+    "_comment_crfstore": "本地服装导入：IndexedDB 存文件 + ZIP 校验。属 features（可拔插玩法），只被 ui 层调用。",
+    "longterm": "core",
+    "_comment_longterm": "长期记忆（条目 + 摘要）：纯逻辑，无 DOM；只读写 localStorage。",
+    "voicecache": "features",
+    "_comment_voicecache": "语音片段缓存：IndexedDB 存 blob + 字节预算逐出。"
   },
   "allowCycles": [
     {

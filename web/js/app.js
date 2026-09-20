@@ -225,6 +225,13 @@
       if (Memory.setLLM) {
         Memory.setLLM(function (sys, body, opts) { return Api.complete(sys, body, opts); });
       }
+      /* 长期记忆的归纳也走玩家自己配的端点；side 请求必须 standalone，
+         否则会分走代际令牌、把玩家正在等的回复判成 STALE 丢掉。 */
+      if (window.LongTerm && LongTerm.setLLM) {
+        LongTerm.setLLM(function (sys, body, opts) {
+          return Api.complete(sys, body, Object.assign({ standalone: true }, opts || {}));
+        });
+      }
       /* Two render-layer reads that used to be hidden inside core/io modules
          (invisible to the boundary guard, which is why --strict stayed at 0):
          nsfw decides the variant but must not know Avatar, and api fills the
@@ -312,7 +319,22 @@
                not as the player (web/js/echo.js). This is the single funnel
                every synthesized line passes through. */
             if (window.Voice && Voice.noteAssistantSpeech) Voice.noteAssistantSpeech(t);
-            return Api.speak(t, ttsL, (meta && meta.mode) || st2.mode, (meta && meta.emotion) || '');
+            return Api.speak(t, ttsL, (meta && meta.mode) || st2.mode, (meta && meta.emotion) || '')
+              .then(function (url) {
+                /* 同一条台词只缓存一次：key = 文本 + 模式。
+                   缓存失败绝不影响播放（VoiceCache 自己吞异常）。 */
+                if (window.VoiceCache && url) {
+                  try {
+                    App._voiceSeq = (App._voiceSeq || 0) + 1;
+                    var key = 'v' + App._voiceSeq + ':' + t.slice(0, 40);
+                    App._lastVoiceKey = key;
+                    fetch(url).then(function (r) { return r.blob(); }).then(function (bl) {
+                      return VoiceCache.put(key, bl, { text: t, url: '' });
+                    }).catch(function () {});
+                  } catch (e) {}
+                }
+                return url;
+              });
           });
         });
         Turn.setPlayer(function (url, signal, meta) {
@@ -673,6 +695,10 @@
       document.getElementById('btn-alarm-new').onclick = function () { App._newAlarm(); };
       /* area_bottom_sheet.dart: who is around at the level you're looking at. */
       /* 玩家缩放：按钮 + 滚轮。只放大，复位键回 1.0。 */
+      var rp = document.getElementById('btn-replay');
+      if (rp) rp.onclick = function () { App.replayLastVoice(); };
+      var vf = document.getElementById('btn-voicefav');
+      if (vf) vf.onclick = function () { App.favLastVoice(); };
       var zi = document.getElementById('btn-zoom-in');
       var zo = document.getElementById('btn-zoom-out');
       var zr = document.getElementById('btn-zoom-reset');
@@ -1556,9 +1582,15 @@
          drops queued lines, and invalidates a reply still on the wire (the
          epoch Api.chat re-checks when it resolves). */
       var turnEpoch = (window.Turn && Turn.beginTurn) ? Turn.beginTurn('say') : null;
+      /* 本轮用户说的话作为长期记忆的相关度线索（cue），
+         并把这一轮记进待归纳队列（攒够 PENDING_MAX 自动归纳一次）。 */
+      if (window.LongTerm) {
+        try { LongTerm.note('user', text); } catch (e) {}
+      }
       Api.chat(App.history, text, {
         mode: st.mode, style: st.style,
         epoch: turnEpoch,
+        cue: text,
         rpgContext: App._rpgContext(),
         sceneSection: App._sceneContext(),
         nsfwSection: window.Nsfw ? Nsfw.screenFact() : ''
@@ -1596,6 +1628,10 @@
             content: Api.formatHistoryReply(reply.text)
           });
           App._sayReply(reply, turnEpoch);
+          /* 助手这一轮进长期记忆的待归纳队列（被 STALE 丢弃的回复不会走到这里） */
+          if (window.LongTerm) {
+            try { LongTerm.note('assistant', reply.text); } catch (e) {}
+          }
 
           /* Talk-quests advance once per turn — if the LLM already reported
              quest progress through <state>, don't double-count it here. */
@@ -1690,6 +1726,30 @@
         fx: Api.MODE_PLAY_FX[st.mode] || null,
         ownerId: 'chat'
       });
+    },
+
+    /* 重播上一段语音（从缓存取，不重新合成）。 */
+    replayLastVoice: function () {
+      if (!window.VoiceCache || !App._lastVoiceKey) { App.toast('没有可重播的语音'); return; }
+      VoiceCache.urlFor(App._lastVoiceKey).then(function (url) {
+        if (!url) { App.toast('这段语音已不在缓存里'); return; }
+        var a = App.audio;
+        if (!a) return;
+        try {
+          a.src = url;
+          a.playbackRate = 1;
+          a.play().catch(function () {});
+          Avatar.setTalking(true);
+          a.onended = function () { Avatar.setTalking(false); try { URL.revokeObjectURL(url); } catch (e) {} };
+        } catch (e) { App.toast('重播失败'); }
+      }).catch(function () { App.toast('重播失败'); });
+    },
+
+    /* 收藏 / 取消收藏上一段语音（收藏的片段不会被字节预算逐出） */
+    favLastVoice: function () {
+      if (!window.VoiceCache || !App._lastVoiceKey) { App.toast('没有可收藏的语音'); return; }
+      var on = VoiceCache.toggleFav(App._lastVoiceKey);
+      App.toast(on ? '已收藏这段语音' : '已取消收藏');
     },
 
     /* Shared end-of-audio bookkeeping. The rate reset is not cosmetic: ASMR

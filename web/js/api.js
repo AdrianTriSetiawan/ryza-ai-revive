@@ -1176,6 +1176,15 @@
       var outLang = opts.lang || Api.replyLang();
       var mem = '';
       try { if (window.Memory) mem = Memory.promptBlock() || ''; } catch (e) { mem = ''; }
+      /* 长期记忆（条目 + 摘要）独立于近窗卡片：digest 永远注入，条目按本轮
+         用户说的话做相关度挑选。没有这一层，三个月前的约定就再也想不起来。 */
+      try {
+        if (window.LongTerm) {
+          var lt = LongTerm.promptBlock(opts.cue || '');
+          if (lt) mem = mem ? (mem + String.fromCharCode(10, 10) + lt) : lt;
+
+        }
+      } catch (e) { /* 记忆层不许拖垮对话 */ }
       var system = buildSystemPrompt(opts.mode || st.mode, opts.style || st.style,
                                      opts.rpgContext || '', outLang, opts.nsfwSection || '',
                                      opts.sceneSection || '', mem);
