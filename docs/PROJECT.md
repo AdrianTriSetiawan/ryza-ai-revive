@@ -92,6 +92,14 @@ follow the same rules.
 
 **Language matrix.** `app.lang`, `voice.lang`, `llm.lang`, `tts.lang`. When TTS language differs from LLM language, `Api.translate` runs first; on-screen text remains in `llm.lang`.
 
+**Fish Audio has two surfaces in the wild, and users land on different ones.** The older
+Open API (`/api/open/v1`, `POST /speech/tts`, engine named in the body, auto-clone from the
+local samples) and the current one (`https://api.fish.audio`, `POST /v1/tts`, engine named in
+a `model` header, voice passed as `reference_id`). The base URL in Settings picks the surface
+and is never rewritten; pasting the documented host used to be silently remapped to the other
+one, which sent the key somewhere it does not work. Auto-clone exists only on the older
+surface — the current one wants a voice id created on fish.audio.
+
 ---
 
 ## 3. Hosts
@@ -99,6 +107,14 @@ follow the same rules.
 **Desktop.** Electron, `frame: false`, custom scheme `ryza://app/`. `GET/POST /_proxy` is implemented on that scheme. Profile data: `%AppData%\RyzaChat\ryza-web-storage.json`. `config/` is not packaged.
 
 **Android.** `android.app.Activity` and `AssetServer` (static files plus `/_proxy`). Requests under `config/` return 404. The maintained APK path is `scripts/build_apk.ps1`.
+
+**Proxy target rule.** `/_proxy` forwards `https://` anywhere, and `http://` only on loopback
+(127.0.0.0/8, `localhost`, `::1`). The https rule is there so an API key never crosses the
+network in clear; a loopback target never crosses the network, and demanding https there
+refused exactly the local-first setup this client is built around (Ollama on
+`127.0.0.1:11434`). All three hosts carry the same rule and `config/layers.json` pins them
+together; `scripts/proxy_target_regression.js` checks the matrix on both the python and the
+desktop implementation and drives the real dev server.
 
 **NSFW gate.** `web/js/nsfw.js` swaps a costume's `nsfw` atlas texture when the AI emits `undress:on`, but only after the user enables `app.nsfwEnabled` in Settings. `undress:off` always restores the normal texture; the permission defaults to false.
 
@@ -110,10 +126,13 @@ follow the same rules.
 
 ```powershell
 node scripts/boot_smoke.js
+node scripts/back_regression.js
 node scripts/game_logic_regression.js
 node scripts/memory_regression.js
 node scripts/motion_regression.js
 node scripts/expression_coverage.js
+node scripts/proxy_target_regression.js
+node scripts/layering_check.js --strict
 python scripts/privacy_check.py web
 ```
 

@@ -76,9 +76,14 @@ function jsonError(status, message) {
   });
 }
 
+/* https anywhere, http only on loopback — the rule and its rationale live in
+   desktop/proxy-target.js (issue #5), which is also listed in
+   package.json's `files` so the packaged shell can require it. */
+const { proxyTargetAllowed } = require('./proxy-target');
+
 async function proxyRequest(request, targetUrl) {
-  if (!String(targetUrl || '').startsWith('https://')) {
-    return jsonError(400, 'proxy target must be https');
+  if (!proxyTargetAllowed(targetUrl)) {
+    return jsonError(400, 'proxy target must be https (or http on loopback)');
   }
   const headers = { 'User-Agent': 'RyzaChat/1.2.19' };
   const ct = request.headers.get('content-type');

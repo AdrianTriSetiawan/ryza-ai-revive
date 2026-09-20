@@ -25,6 +25,7 @@
       "main.js",
       "preload.js",
       "web-storage.js",
+      "proxy-target.js",
       "package.json"
     ],
     "extraResources": [

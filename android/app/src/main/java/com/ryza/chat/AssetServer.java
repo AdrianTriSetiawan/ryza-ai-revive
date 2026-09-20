@@ -176,8 +176,9 @@ public final class AssetServer extends Thread {
                 off += n;
             }
         }
-        if (!target.startsWith("https://")) {
-            write(out, 400, "application/json", "{\"error\":{\"message\":\"proxy target must be https\"}}");
+        if (!proxyTargetAllowed(target)) {
+            write(out, 400, "application/json",
+                  "{\"error\":{\"message\":\"proxy target must be https (or http on loopback)\"}}");
             return;
         }
         try {
@@ -220,8 +221,9 @@ public final class AssetServer extends Thread {
                 }
             }
         }
-        if (!target.startsWith("https://")) {
-            write(out, 400, "application/json", "{\"error\":{\"message\":\"proxy target must be https\"}}");
+        if (!proxyTargetAllowed(target)) {
+            write(out, 400, "application/json",
+                  "{\"error\":{\"message\":\"proxy target must be https (or http on loopback)\"}}");
             return;
         }
         try {
@@ -241,6 +243,48 @@ public final class AssetServer extends Thread {
             writeBytes(out, code, ct, resp, "");
         } catch (IOException e) {
             write(out, 502, "application/json", "{\"error\":{\"message\":\"proxy get failed\"}}");
+        }
+    }
+
+    /**
+     * Loopback = 127.0.0.0/8, ::1, localhost — and nothing else. A prefix test
+     * on "127." would also wave through `127.0.0.1.evil.com`, a public name,
+     * so this parses the dotted quad instead of matching a string prefix.
+     */
+    private static boolean isLoopbackHost(String host) {
+        if (host == null) return false;
+        String h = host.trim().toLowerCase(Locale.ROOT);
+        if (h.startsWith("[") && h.endsWith("]")) h = h.substring(1, h.length() - 1);
+        if (h.equals("localhost") || h.equals("::1")) return true;
+        String[] parts = h.split("\\.", -1);
+        if (parts.length != 4 || !parts[0].equals("127")) return false;
+        for (int i = 1; i < 4; i++) {
+            if (parts[i].isEmpty() || parts[i].length() > 3) return false;
+            for (int j = 0; j < parts[i].length(); j++) {
+                if (!Character.isDigit(parts[i].charAt(j))) return false;
+            }
+            if (Integer.parseInt(parts[i]) > 255) return false;
+        }
+        return true;
+    }
+
+    /**
+     * https anywhere, http only on loopback.
+     *
+     * The https rule exists so an API key never crosses the network in clear.
+     * A loopback target never crosses the network: Ollama / LM Studio on the
+     * operator's own machine, so refusing them broke the local-first setup
+     * this client is built around. Everything not loopback still needs https.
+     * Same rule in scripts/serve.py and desktop/main.js.
+     */
+    private static boolean proxyTargetAllowed(String target) {
+        try {
+            java.net.URI u = java.net.URI.create(target);
+            String scheme = u.getScheme() == null ? "" : u.getScheme().toLowerCase(Locale.ROOT);
+            if (scheme.equals("https")) return true;
+            return scheme.equals("http") && isLoopbackHost(u.getHost());
+        } catch (Exception e) {
+            return false;
         }
     }
 

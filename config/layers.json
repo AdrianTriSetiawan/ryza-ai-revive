@@ -307,8 +307,13 @@
       },
       {
         "host": "scripts/serve.py",
-        "label": "目标必须 https",
+        "label": "目标必须 https（loopback 例外）",
         "re": "proxy target must be https"
+      },
+      {
+        "host": "scripts/serve.py",
+        "label": "loopback http 例外（三端同名出口）",
+        "re": "(?i)proxy_?target_?allowed"
       },
       {
         "host": "scripts/serve.py",
@@ -322,8 +327,18 @@
       },
       {
         "host": "desktop/main.js",
-        "label": "目标必须 https",
+        "label": "目标必须 https（loopback 例外）",
         "re": "proxy target must be https"
+      },
+      {
+        "host": "desktop/main.js",
+        "label": "loopback http 例外（三端同名出口）",
+        "re": "(?i)proxy_?target_?allowed"
+      },
+      {
+        "host": "desktop/proxy-target.js",
+        "label": "loopback http 例外（规则本体）",
+        "re": "(?i)proxy_?target_?allowed"
       },
       {
         "host": "desktop/main.js",
@@ -342,8 +357,13 @@
       },
       {
         "host": "android/app/src/main/java/com/ryza/chat/AssetServer.java",
-        "label": "目标必须 https",
+        "label": "目标必须 https（loopback 例外）",
         "re": "proxy target must be https"
+      },
+      {
+        "host": "android/app/src/main/java/com/ryza/chat/AssetServer.java",
+        "label": "loopback http 例外（三端同名出口）",
+        "re": "(?i)proxy_?target_?allowed"
       },
       {
         "host": "android/app/src/main/java/com/ryza/chat/AssetServer.java",

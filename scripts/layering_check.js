@@ -260,7 +260,12 @@ cfg.proxyContract.assertions.forEach(function (a) {
     return;
   }
   const src = fs.readFileSync(p, 'utf8');
-  if (!new RegExp(a.re).test(src)) {
+  /* `(?i)` prefix = case-insensitive. Worth supporting because the three hosts
+     spell the same helper in their own idiom (proxy_target_allowed in Python,
+     proxyTargetAllowed in JS/Java) and the case is not part of the contract. */
+  const flags = /^\(\?i\)/.test(a.re) ? 'i' : '';
+  const pattern = a.re.replace(/^\(\?i\)/, '');
+  if (!new RegExp(pattern, flags).test(src)) {
     console.log('  缺失 ' + a.host + ' :: ' + a.label + '  (/' + a.re + '/)');
     dViolations++;
   }

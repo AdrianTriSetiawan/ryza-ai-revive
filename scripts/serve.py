@@ -9,6 +9,7 @@ POST /_proxy?u=<https url> forwards the JSON body and Authorization header.
 """
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import sys
@@ -22,9 +23,40 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parent.parent
 WEB = ROOT / "web"
 PROVIDERS = ROOT / "config" / "providers.json"
-PORT = 8765
+# 8765 is the documented dev port; RYZA_PORT exists so a test can bind a free
+# one instead of fighting a dev server that is already running.
+PORT = int(os.environ.get("RYZA_PORT") or 8765)
 # Cloudflare (opencode.ai etc.) returns 1010 for the default Python-urllib UA.
 UA = "RyzaChat/1.2.19"
+
+
+def is_loopback_host(host: str) -> bool:
+    """True for 127.0.0.0/8, ::1 and `localhost` — and nothing else."""
+    h = (host or "").strip().strip("[]").lower()
+    if not h:
+        return False
+    if h == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(h).is_loopback
+    except ValueError:
+        return False
+
+
+def proxy_target_allowed(target: str) -> bool:
+    """https anywhere, http only on loopback.
+
+    The https rule exists so an API key never crosses the network in clear.
+    A loopback target never crosses the network: the operator is running the
+    model on their own machine (Ollama on 127.0.0.1:11434, LM Studio,
+    llama.cpp), so refusing it only broke the local-first setup this client is
+    built around. Everything that is not loopback still has to be https.
+    desktop/main.js and android/.../AssetServer.java carry the same rule.
+    """
+    parts = urlparse(target)
+    if parts.scheme == "https":
+        return True
+    return parts.scheme == "http" and is_loopback_host(parts.hostname)
 
 
 class Server(ThreadingHTTPServer):
@@ -58,8 +90,8 @@ class Handler(SimpleHTTPRequestHandler):
         time-limited OSS audio URLs; the page pulls them through here so
         the blob is same-origin for the lip-sync analyser)."""
         target = (parse_qs(parsed.query).get("u") or [""])[0]
-        if not target.startswith("https://"):
-            self.send_error(400, "proxy target must be https")
+        if not proxy_target_allowed(target):
+            self.send_error(400, "proxy target must be https (or http on loopback)")
             return
         try:
             headers = {"User-Agent": UA}
@@ -104,8 +136,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(404, "use POST /_proxy")
             return
         target = (parse_qs(parsed.query).get("u") or [""])[0]
-        if not target.startswith("https://"):
-            self.send_error(400, "proxy target must be https")
+        if not proxy_target_allowed(target):
+            self.send_error(400, "proxy target must be https (or http on loopback)")
             return
         n = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(n) if n else b""
