@@ -220,7 +220,9 @@ select{background:rgba(20,14,18,.9);border:1px solid var(--line);border-radius:9
 /* right round buttons — posture (dual-posture stages only), history ⇧,
    quest flag, bag (the official circle stack over the stage edge) */
 #quick-btns{position:absolute;right:12px;bottom:calc(var(--panel-h) + 14px);z-index:16;
-  display:flex;flex-direction:column;gap:9px;align-items:flex-end;pointer-events:auto}
+  display:flex;flex-direction:column;gap:8px;align-items:flex-end;pointer-events:auto}
+/* 缩放三键横排：把竖排高度从 3×46+18 压到 1×46，立绘少被盖一截 */
+#quick-btns .zoom-row{display:flex;gap:6px;align-items:center}
 .round-btn{width:46px;height:46px;border-radius:50%;background:rgba(26,18,22,.62);
   border:1px solid var(--line);backdrop-filter:blur(8px);display:grid;place-items:center;
   font-size:13px;font-weight:700;color:var(--ink);transition:.15s;flex:0 0 auto}
@@ -397,6 +399,9 @@ select{background:rgba(20,14,18,.9);border:1px solid var(--line);border-radius:9
 .btn:hover{background:rgba(232,180,92,.22)}
 .btn:active{transform:scale(.98)}
 .btn.primary{background:linear-gradient(160deg,var(--gold),#c98f3c);color:#2a1a08;font-weight:700;border:0}
+/* 触摸目标下限 44px：走查实测标题页「はじめる」只有 43px 高，正好差 1px
+   （移动端可点区域规范的最小值）。这里只放大不缩小。 */
+#btn-title-start{min-height:44px;padding-top:13px;padding-bottom:13px}
 .btn.danger{background:rgba(220,90,70,.16);color:#ff9a86;border-color:rgba(220,90,70,.3)}
 .chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:6px}
 .chip{font-size:12px;padding:6px 11px;border-radius:999px;border:1px solid var(--line);

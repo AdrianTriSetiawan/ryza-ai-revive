@@ -442,8 +442,14 @@
       var st = Config.section('state');
       Sound.setPlace(st.stage, st.tod, World.backgroundFor(st.stage));
       Sound.setRoute('talk');
-      App._showDisclosure();
-      App._dailyNudge();
+      /* 幂等：跳过问卷与教程结束都会走到这里。重复进入时只补一次
+         「已经在游戏里」的副作用（音景/路线），弹窗类不再重放。 */
+      var firstEntry = !App._entered;
+      App._entered = true;
+      if (firstEntry) {
+        App._showDisclosure();
+        App._dailyNudge();
+      }
       if (fromOnboard) return;
       App.greet();
     },
@@ -461,12 +467,18 @@
 
     _dailyNudge: function () {
       Daily.load();
-      if (Daily.available()) {
-        /* stagger after the AI-disclosure toast so the two don't stack */
-        setTimeout(function () {
-          App.toast(I18n.t('dl.title') + ' · ' + I18n.t('dl.cta'));
-        }, 3200);
-      }
+      if (!Daily.available()) return;
+      /* 「每日登录」提醒只弹一次：enterGame 可能被二次进入（跳过问卷 + 教程结束
+         都会走到那里），没有这个闸门时同一句提示会叠成两个 toast
+         —— 走查截图里抓到过。 */
+      if (App._nudged) return;
+      App._nudged = true;
+      /* stagger after the AI-disclosure toast so the two don't stack */
+      setTimeout(function () {
+        /* 教程途中不打扰：玩家还没进主界面，这时提示只会挡视线 */
+        if (App._inTutorial) return;
+        App.toast(I18n.t('dl.title') + ' · ' + I18n.t('dl.cta'));
+      }, 3200);
     },
 
     _dailyBadge: function () {
@@ -1664,10 +1676,31 @@
           document.getElementById('btn-send').disabled = false;
           var bar = document.getElementById('retry-bar');
           if (bar && e.message !== 'NO_KEY') bar.classList.remove('hidden');
-          App.toast(e.message === 'NO_KEY' ? I18n.t('toast.needKey')
-                                           : I18n.t('toast.llmFail') + e.message, true);
-          App.showBubble('（……うまく聞こえなかった。もう一回言って？）');
+          var msg = String(e.message || '');
+          var kind = App._failKind(msg);
+          App.toast(kind === 'nokey' ? I18n.t('toast.needKey')
+                 : kind === 'auth' ? I18n.t('toast.llmAuth')
+                 : kind === 'model' ? I18n.t('toast.llmModel')
+                 : I18n.t('toast.llmFail') + msg, true);
+          /* 面板台词必须指向真正的原因。原来不管什么错都写「没听见，再说一次」——
+             而那多数是端点/密钥问题，玩家会一直重发而不会去改设置。 */
+          App.showBubble(I18n.tc('bubble.fail.' + kind,
+            kind === 'nokey' ? '（……ねえ、設定でAPIキーを入れないと、あたしの声が届かないみたい。）'
+            : kind === 'auth' ? '（……あれ、鍵が合ってないみたい。設定を見直してくれる？）'
+            : kind === 'model' ? '（……そのモデル名、あたしには呼べないみたい。設定を確認して。）'
+            : '（……ごめん、今ちょっと繋がらないみたい。少し待ってからもう一回。）'));
         });
+    },
+
+    /* 把模型端点的失败归类，让提示指向真正的原因。
+       只依据错误文本（各家端点错误码不统一）：
+         nokey 没填 Key / auth 401|403 认证失败 / model 模型名不被接受 / other 其余 */
+    _failKind: function (msg) {
+      var m = String(msg || '');
+      if (m === 'NO_KEY' || /NO_KEY|needKey/i.test(m)) return 'nokey';
+      if (/401|403|unauthor|invalid[_ ]api[_ ]key|forbidden/i.test(m)) return 'auth';
+      if (/model|not found|unsupported/i.test(m)) return 'model';
+      return 'other';
     },
 
     /* Is the turn with this epoch still the one in charge? Null means there is

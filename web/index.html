@@ -78,10 +78,13 @@
     </div>
   </div>
   <div id="quick-btns">
-    <!-- 玩家缩放：只放大（下界 1.0，见 avatar.js 的 PLAYER_ZOOM_MIN 说明） -->
-    <button type="button" class="round-btn" id="btn-zoom-in" title="拡大">＋</button>
-    <button type="button" class="round-btn" id="btn-zoom-out" title="縮小">－</button>
-    <button type="button" class="round-btn" id="btn-zoom-reset" title="標準">◎</button>
+    <!-- 玩家缩放：只放大（下界 1.0，见 avatar.js 的 PLAYER_ZOOM_MIN 说明）。
+         三个键排成一行：走查实测竖排 9 个圆钮会盖住立绘的一大条。 -->
+    <div class="zoom-row">
+      <button type="button" class="round-btn" id="btn-zoom-in" title="拡大">＋</button>
+      <button type="button" class="round-btn" id="btn-zoom-out" title="縮小">－</button>
+      <button type="button" class="round-btn" id="btn-zoom-reset" title="標準">◎</button>
+    </div>
     <button type="button" class="round-btn hidden" id="btn-posture" title="座る/立つ">座</button>
     <button type="button" class="round-btn" id="btn-replay" title="もう一度聞く">▶</button>
     <button type="button" class="round-btn" id="btn-voicefav" title="お気に入り">★</button>

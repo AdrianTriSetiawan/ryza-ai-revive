@@ -305,7 +305,10 @@
     },
 
     outfitOf: function (id) {
-      return String(id || 'crf_skn_002_0001').replace(/_(01|99)$/, '');
+      /* 去掉姿态尾号得到「衣服 base」。空 id 时取皮肤表第一条，
+         不写死具体皮肤（换成别的角色时这里不用改）。 */
+      var fallback = (Avatar.skinsIndex && Avatar.skinsIndex[0] && Avatar.skinsIndex[0].id) || '';
+      return String(id || fallback).replace(/_(01|99)$/, '');
     },
 
     /* --------------------------------------------------- posture (source) */
@@ -379,17 +382,25 @@
       var outfit = Avatar.outfitOf(outfitId);
       var wantSuf = Avatar.postureKey() === 'posture_standing' ? '99' : '01';
       var otherSuf = wantSuf === '99' ? '01' : '99';
-      /* Only 0001 ships skeletons (0002/0003/0004 are preview-only), so the
-         wanted posture usually falls back to the same outfit's other skin
-         before it falls back to a different outfit at all. */
-      var order = [outfit + '_' + wantSuf, outfit + '_' + otherSuf,
-                   'crf_skn_002_0001_' + wantSuf, 'crf_skn_002_0001_' + otherSuf];
+      /* 优先：同一件衣服的目标姿态 → 同件衣服的另一姿态。
+         然后**按数据兜底**，不再写死某个皮肤 id：
+           ① 任何「以目标姿态结尾」且有骨骼的皮肤（官方把姿态编码在 id 尾号）
+           ② 任何有骨骼的皮肤
+         写死过的版本（'crf_skn_002_0001_*'）在只发两套皮肤时是对的，
+         但当时那条注释说「只有 0001 有骨骼」——加了 4 套官方皮肤后已经过时。 */
+      var order = [outfit + '_' + wantSuf, outfit + '_' + otherSuf];
       var i, id, hit;
       for (i = 0; i < order.length; i++) {
         id = order[i];
         hit = skins.filter(function (x) { return x.id === id && x.hasSpine && x.skel; })[0];
         if (hit) return hit;
       }
+      var wearable = skins.filter(function (x) { return x.hasSpine && x.skel; });
+      var byPosture = wearable.filter(function (x) {
+        return x.id.slice(-2) === wantSuf;
+      })[0];
+      if (byPosture) return byPosture;
+      if (wearable.length) return wearable[0];
       return skins.filter(function (x) { return x.hasSpine && x.skel; })[0] || null;
     },
 
@@ -1144,7 +1155,11 @@
               Avatar._applySceneConstraints(L, cfg);
               Avatar._cacheMidBind(L);
               Avatar.resize();
-              var outfit = (window.Config && Config.section('state').skin) || 'crf_skn_002_0001';
+              /* 默认皮肤的唯一来源是 Config 的 state.skin（它自己带默认值），
+                 这里不再写第二遍字面量。 */
+              var st0 = (window.Config && Config.section('state')) || {};
+              var outfit = st0.skin || (Avatar.skinsIndex && Avatar.skinsIndex[0] &&
+                                        Avatar.skinsIndex[0].id) || '';
               Avatar.loadSkin(outfit, cb);
             });
           });
