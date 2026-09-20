@@ -1020,6 +1020,7 @@
             Avatar._mutedSnap = null;
             Avatar._typeMap = null;
             Avatar._sittingId = Avatar._sittingFromPosture();
+            Avatar._sitSlotCache = null;
             Avatar._measureHeadLocal();
             /* Imported outfits: the atlas names its page as a bare filename, so
                the texture has to come from the injected source (blob URL). */
@@ -1249,6 +1250,75 @@
       if (/agura/i.test(p)) return 'sitting_agura';
       if (/stand/i.test(p)) return 'standing';
       return 'sitting_normal';
+    },
+
+    /* ---------------------------------------------------- official sitting rules
+       Source: gesture.emotionalGesture.SittingSets / SittingMandatorySlots
+       (present since 1.0.x; the old code never read them).
+
+       SittingSets entries are { newId, previousId, weight }:
+         weight > 0  -> that auto-transition is allowed
+         weight == 0 -> author-disabled
+       In the shipped data every SWITCH pair is 0 (only the stay-in-place pair is
+       99999), so the official client never auto-switches variants. Reading the
+       table instead of hardcoding "never" keeps that data-driven: if a costume
+       ships non-zero switch weights, this follows them.
+
+       SittingMandatorySlots  [ {SittingId, SlotId} ] means: while that sitting
+       variant is active, that slot must be driven by its own group (agura -> leg),
+       i.e. the layer must not be left to the default idle. */
+    _sittingSets: function () {
+      var g = Avatar.gesture && Avatar.gesture.emotionalGesture;
+      return (g && g.SittingSets) || [];
+    },
+
+    _sittingMandatory: function () {
+      var g = Avatar.gesture && Avatar.gesture.emotionalGesture;
+      return (g && g.SittingMandatorySlots) || [];
+    },
+
+    /* 自动切换候选：从当前坐姿出发、官方权重 > 0 的目标坐姿。
+       官方数据里全是 0 ⇒ 返回空数组 ⇒ 永不自动切换（与官方行为一致）。 */
+    sittingAutoTargets: function () {
+      var cur = Avatar._sittingId || 'sitting_normal';
+      var out = [];
+      Avatar._sittingSets().forEach(function (x) {
+        if (x.previousId !== cur) return;
+        if (x.newId === cur) return;
+        if (Number(x.weight) > 0) out.push({ id: x.newId, weight: Number(x.weight) });
+      });
+      return out;
+    },
+
+    /* 当前坐姿下被强制占用的槽位（官方 agura → leg）。
+       每帧会被问几次，所以按坐姿缓存 —— 换姿势或换服装时清。 */
+    _sitSlotCache: null,
+    _sitSlotCacheFor: '',
+    sittingMandatorySlots: function () {
+      var cur = Avatar._sittingId || 'sitting_normal';
+      if (Avatar._sitSlotCache && Avatar._sitSlotCacheFor === cur) return Avatar._sitSlotCache;
+      var out = Avatar._sittingMandatory()
+        .filter(function (x) { return x.SittingId === cur; })
+        .map(function (x) { return x.SlotId; });
+      Avatar._sitSlotCache = out;
+      Avatar._sitSlotCacheFor = cur;
+      return out;
+    },
+
+    /* 手动指定坐姿变体（官方数据里没有自动切换，只留这一个入口给上层调用）。
+       仅当 SittingSets 里存在该 id 时才接受。 */
+    setSittingVariant: function (id, cb) {
+      var known = {};
+      Avatar._sittingSets().forEach(function (x) { known[x.newId] = 1; known[x.previousId] = 1; });
+      if (!known[id]) { cb && cb(new Error('unknown sitting variant: ' + id)); return; }
+      Avatar._sittingId = id;
+      Avatar._sitSlotCache = null;
+      Avatar._armG = null;
+      Avatar._torsoG = null;
+      Avatar._legG = null;
+      Avatar._legLG = null;
+      Avatar._legRG = null;
+      if (cb) cb(null, Avatar.sittingMandatorySlots());
     },
 
     _restGroupId: function () {
@@ -1495,6 +1565,10 @@
 
     _pickLayerGroup: function (kind, idleName, poseType, preferRest) {
       var restId = kind === 'arm' ? Avatar._restGroupId() : '';
+      /* Official SittingMandatorySlots: while a variant that mandates this slot
+         is active, the slot must be driven by its own group -- never left empty.
+         Data-driven: with no mandate (the shipped default) nothing changes. */
+      var mandated = Avatar.sittingMandatorySlots().indexOf(kind) !== -1;
       var data0 = Avatar.avatar && Avatar.avatar.data;
       function resolvable(g) {
         if (!data0) return true;
@@ -1529,6 +1603,14 @@
       if (restId) {
         return Avatar._motionGroups().filter(function (g) {
           return g.GroupId === restId && Avatar._occKind(g) === kind && resolvable(g);
+        })[0] || null;
+      }
+      if (mandated) {
+        /* Mandated slot: take any applicable, resolvable group for this kind,
+           ignoring weights (the author said this slot must be driven). */
+        return Avatar._motionGroups().filter(function (g) {
+          return Avatar._occKind(g) === kind && Avatar._groupApplies(g, idleName) &&
+                 resolvable(g);
         })[0] || null;
       }
       return null;

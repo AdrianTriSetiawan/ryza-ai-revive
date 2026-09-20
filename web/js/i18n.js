@@ -422,11 +422,11 @@
       'wm.skin.title': '衣装を見る', 'wm.skin.desc': '骨格がある2着は着替えられる。',
       'wm.quest.title': 'クエストを1つ', 'wm.quest.desc': '依頼を1つ片付ける。',
       'inv.title': '持ち物', 'inv.empty': 'なにも入っていない。',
-      'slot.title': 'セーブスロット', 'slot.empty': '空き', 'slot.save': 'ここへ保存',
+      'slot.title': 'セーブデータ',   /* 官方用词（nav.save 同） */ 'slot.empty': '空き', 'slot.save': 'ここへ保存',
       'slot.load': '読み込む', 'vol.bgm': 'BGM', 'vol.ambient': '環境音',
       'vol.voice': 'ボイス', 'vol.se': 'SE',
       'mode.sheet': '会話モード', 'mode.chat': '雑談', 'mode.story': '物語', 'mode.immersive': '没入',
-      'mode.asmr': 'ASMR', 'mode.text': 'テキスト',
+      'mode.asmr': 'ASMRスタイル', 'mode.text': 'テキスト',   /* 官方是 ASMRスタイル */
       'mode.sub.chat': '自由に雑談を楽しむモード', 'mode.sub.story': 'ライザと冒険を進める物語モード',
       'mode.sub.immersive': 'より深く没入できます', 'mode.sub.asmr': '耳元で震える声で',
       'mode.sub.text': 'テキストでやり取りするモード',
