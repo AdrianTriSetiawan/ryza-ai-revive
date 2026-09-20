@@ -672,6 +672,21 @@
       };
       document.getElementById('btn-alarm-new').onclick = function () { App._newAlarm(); };
       /* area_bottom_sheet.dart: who is around at the level you're looking at. */
+      /* 玩家缩放：按钮 + 滚轮。只放大，复位键回 1.0。 */
+      var zi = document.getElementById('btn-zoom-in');
+      var zo = document.getElementById('btn-zoom-out');
+      var zr = document.getElementById('btn-zoom-reset');
+      if (zi) zi.onclick = function () { Avatar.zoomBy(Avatar.PLAYER_ZOOM_STEP); };
+      if (zo) zo.onclick = function () { Avatar.zoomBy(-Avatar.PLAYER_ZOOM_STEP); };
+      if (zr) zr.onclick = function () { Avatar.zoomReset(); };
+      var stageEl = document.getElementById('stage');
+      if (stageEl) {
+        stageEl.addEventListener('wheel', function (ev) {
+          if (!App._viewIsTalk()) return;          /* 只在对话页响应滚轮 */
+          ev.preventDefault();
+          Avatar.zoomBy(ev.deltaY < 0 ? Avatar.PLAYER_ZOOM_STEP : -Avatar.PLAYER_ZOOM_STEP);
+        }, { passive: false });
+      }
       var wmBtn = document.getElementById('btn-world-mode');
       if (wmBtn) wmBtn.onclick = function () { App.toggleWorldMode(); };
       /* 服装导入：ZIP 走 CrfStore（IndexedDB），失败只报错不崩 */
@@ -735,6 +750,12 @@
           App.toast(I18n.t('toast.saved'));
         }
       };
+    },
+
+    /* 当前是否在对话页（滚轮缩放只在这里生效，避免影响列表滚动） */
+    _viewIsTalk: function () {
+      var v = document.getElementById('view-talk');
+      return !!(v && v.classList.contains('active'));
     },
 
     showView: function (name) {

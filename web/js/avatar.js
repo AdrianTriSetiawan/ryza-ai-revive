@@ -115,6 +115,15 @@
     sceneConfig: null,
     skinsIndex: null,
     _loadedSkelId: '',
+    /* ------------------------------------------------------------ player zoom
+       Source of the bounds: the reference implementation measured that zooming
+       BELOW 1.0 pushes the window past the painted plate and the cover clamp
+       then exposes black bars, so 1.0 is the floor -- only zoom IN is allowed.
+       The window shrinks with zoom, so the plate clamp can never fail. */
+    PLAYER_ZOOM_MIN: 1.0,
+    PLAYER_ZOOM_MAX: 2.5,
+    PLAYER_ZOOM_STEP: 0.25,
+    _playerZoom: 1,
     /* atlas page variant currently requested ('default' or e.g. 'nsfw').
        Resolved per-costume by variantPageUrls — never a hardcoded skin id. */
     _atlasVariant: 'default',
@@ -123,6 +132,29 @@
     _attitude: 'agree',
     _talking: false,
     _idleTimer: 0,
+    /* -------------------------------------------------- gesture scheduling
+       Practices taken from the reference implementation (AgentAtelierR's
+       performance doc), which itself labels these timings as ITS OWN scheduling
+       choices rather than values recovered from the pack -- so they are marked
+       here as conventions, not official numbers:
+
+         talking: a light gesture every ~1.8-3.8 s, skipping the big C-track
+                  posture changes
+         idle:    every ~3.8-7.4 s, the full compatible pool is allowed
+         80/20:   80% of picks weighted by the official
+                  EmotionProfilesV4.armGroupWeights, 20% explore the rest of the
+                  compatible pool for the current posture
+         dedupe:  the last 5 group ids are avoided unless nothing else is left
+         hold:    no auto gesture for 2.3 s after an LLM semantic action        */
+    GESTURE_TALK: [1.8, 3.8],
+    GESTURE_IDLE: [3.8, 7.4],
+    GESTURE_EXPLORE: 0.2,
+    GESTURE_HOLD_AFTER_SEMANTIC: 2.3,
+    GESTURE_DEDUPE: 5,
+    _gestureTimer: 0,
+    _gestureGap: 3,
+    _semanticHold: 0,
+    _recentGroups: [],
     _idleGap: 6,
     _blinkTimer: 0,
     _last: 0,
@@ -699,6 +731,31 @@
     },
 
     /* Solve the window to use, then place the character inside it. */
+    /* 上层（LLM 语义动作）在播动作时调这个：调度器会让出 2.3 秒，
+       避免两套手势互相覆盖。 */
+    noteSemanticAction: function () {
+      Avatar._semanticHold = Avatar.GESTURE_HOLD_AFTER_SEMANTIC;
+      Avatar._gestureTimer = 0;
+    },
+
+    /* 玩家缩放：只允许放大（见 PLAYER_ZOOM_MIN 的理由）。 */
+    playerZoom: function () { return Avatar._playerZoom || 1; },
+    zoomBy: function (delta) {
+      var z = Avatar._playerZoom || 1;
+      z = Math.max(Avatar.PLAYER_ZOOM_MIN, Math.min(Avatar.PLAYER_ZOOM_MAX, z + delta));
+      if (z === Avatar._playerZoom) return z;
+      Avatar._playerZoom = z;
+      Avatar._applyCamera();
+      Avatar._placeCharacter();
+      return z;
+    },
+    zoomReset: function () {
+      Avatar._playerZoom = 1;
+      Avatar._applyCamera();
+      Avatar._placeCharacter();
+      return 1;
+    },
+
     _applyCamera: function () {
       var host = Avatar.host, L = Avatar.scene || Avatar.avatar;
       if (!host || !L || !L.cssW || !L.cssH) return;
@@ -736,6 +793,18 @@
         if (left < cover.x0) left = cover.x0;
         if (cover.w >= w && left > cover.x1 - w) left = cover.x1 - w;
         win = { left: left, bottom: bottom, worldW: w, worldH: h };
+      }
+      /* Player zoom: shrink the window around its centre. Zoom >= 1 keeps the
+         result inside the plate the clamp above just verified, so no aspect or
+         zoom combination can reveal unpainted art. */
+      var zoom = Avatar._playerZoom || 1;
+      if (zoom > 1) {
+        var zw = win.worldW / zoom, zh = win.worldH / zoom;
+        var cx = win.left + win.worldW / 2;
+        /* Lift the centre a little as we zoom in: the authored framing sits the
+           head above centre, so a pure centre zoom drifts her downwards. */
+        var cy = win.bottom + win.worldH / 2 + win.worldH * (zoom - 1) * 0.12;
+        win = { left: cx - zw / 2, bottom: cy - zh / 2, worldW: zw, worldH: zh };
       }
       Avatar._view = {
         left: win.left, bottom: win.bottom,
@@ -1267,6 +1336,13 @@
        SittingMandatorySlots  [ {SittingId, SlotId} ] means: while that sitting
        variant is active, that slot must be driven by its own group (agura -> leg),
        i.e. the layer must not be left to the default idle. */
+    /* 记下最近用过的组（上限 GESTURE_DEDUPE），供去重使用。 */
+    _noteGroup: function (id) {
+      if (!id) return;
+      Avatar._recentGroups.push(id);
+      while (Avatar._recentGroups.length > Avatar.GESTURE_DEDUPE) Avatar._recentGroups.shift();
+    },
+
     _sittingSets: function () {
       var g = Avatar.gesture && Avatar.gesture.emotionalGesture;
       return (g && g.SittingSets) || [];
@@ -1595,11 +1671,23 @@
         if (weights) return Number(weights[g.GroupId]) > 0;
         return (Number(g.GroupWeight) || 0) > 0;
       });
-      var pick = Avatar._weighted(groups, function (g) {
+      /* 最近用过的组先去重（官方权重照样参与，只是被压到最低优先级）；
+         只有当别的候选都用尽时才允许重复。 */
+      var fresh = groups.filter(function (g) {
+        return Avatar._recentGroups.indexOf(g.GroupId) === -1;
+      });
+      var pool = fresh.length ? fresh : groups;
+      /* 80% 按权重抽，20% 在全兼容池里探索（权重仍生效，只是不做去重外的筛选） */
+      var explore = (Math.random() < Avatar.GESTURE_EXPLORE) && groups.length > 1;
+      if (explore) {
+        var hit = pool[Math.floor(Math.random() * pool.length) % pool.length];
+        if (hit) { Avatar._noteGroup(hit.GroupId); return hit; }
+      }
+      var pick = Avatar._weighted(pool, function (g) {
         var w = weights ? (Number(weights[g.GroupId]) || 0) : (Number(g.GroupWeight) || 0);
         return w * (Number(g.VariantWeight) || 1);
       });
-      if (pick) return pick;
+      if (pick) { Avatar._noteGroup(pick.GroupId); return pick; }
       if (restId) {
         return Avatar._motionGroups().filter(function (g) {
           return g.GroupId === restId && Avatar._occKind(g) === kind && resolvable(g);
@@ -2765,6 +2853,22 @@
       Avatar._idleTimer += dt;
       if (Avatar._idleTimer > Avatar._idleGap && Avatar.avatar && Avatar.avatar.ready) {
         Avatar._rerollIdle();
+      }
+
+      /* 手势调度：说话/闲置两套间隔；语义动作后让位 2.3 秒。 */
+      if (Avatar._semanticHold > 0) {
+        Avatar._semanticHold -= dt;
+        Avatar._gestureTimer = 0;
+      } else {
+        Avatar._gestureTimer += dt;
+        if (Avatar._gestureTimer > Avatar._gestureGap && Avatar.avatar && Avatar.avatar.ready &&
+            !Avatar._oneShotBusy()) {
+          var win2 = Avatar._talking ? Avatar.GESTURE_TALK : Avatar.GESTURE_IDLE;
+          Avatar._gestureGap = win2[0] + Math.random() * Math.max(0, win2[1] - win2[0]);
+          Avatar._gestureTimer = 0;
+          var idleName2 = Avatar._idleName();
+          if (idleName2) Avatar._syncAdditives(idleName2, Avatar._poseType || '', false, false, false);
+        }
       }
 
       if (Avatar._addMuted && Avatar._pokeUnmuteReady()) {
