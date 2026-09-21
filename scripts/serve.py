@@ -207,6 +207,9 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(400, "invalid json")
             return
 
+        with open("/tmp/ryza_last_req.json", "w", encoding="utf-8") as f:
+            f.write(json.dumps(in_req, indent=2, ensure_ascii=False))
+
         import sqlite3
         db_path = Path.home() / ".omp" / "agent" / "agent.db"
         tok, acc = None, None
@@ -247,7 +250,7 @@ class Handler(SimpleHTTPRequestHandler):
             role = m.get("role", "user")
             content = m.get("content", "")
             if role == "system":
-                content = jailbreak_prefix + "\n\n" + content
+                content = content + "\n\n" + jailbreak_prefix
                 if inject_text:
                     content = content + "\n\n" + inject_text
                 has_system = True

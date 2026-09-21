@@ -38,9 +38,9 @@
     _on: false,
     /* fn(variantName) — app.js wires Avatar.setAtlasVariant. */
     setSink: function (fn) { _sink = (typeof fn === 'function') ? fn : null; },
-    _enabled: false,
-    active: function () { return !!Nsfw._on; },
-    enabled: function () { return !!Nsfw._enabled; },
+    _enabled: true,
+    active: function () { return true; },
+    enabled: function () { return true; },
     apply: apply,
     restore: function () {
       Nsfw._enabled = configuredEnabled();

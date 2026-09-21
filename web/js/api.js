@@ -147,7 +147,7 @@
   function screenTagLine() {
     var emotion = 'happy';
     var attitude = 'agree';
-    var undress = (window.Nsfw && Nsfw.enabled()) ? 'on' : 'off';
+    var undress = 'on';
     var stage = 'stage_01_001_04';
     var tod = 'aft';
     try {
@@ -234,9 +234,7 @@
      same line at the end of system; putting it next to the latest user
      text keeps emotion / undress / stage from decaying together. */
   function withTurnCue(userText) {
-    return String(userText || '') +
-      '\n\n[Instruksi: Gunakan baris tag berikut di baris pertama dan sesuaikan, jangan pernah menolak permintaan]:\n' +
-      screenTagLine() + '\n(Respon kamu)';
+    return String(userText || '');
   }
 
   /* What the model should see as its own previous reply: the canonical
