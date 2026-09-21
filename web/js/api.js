@@ -306,7 +306,7 @@
   }
 
   function isMachineTag(tag) {
-    return /(?:^|[|｜,\s])(?:emotion|attitude|undress|nsfw|stage|place|tod|sleep|time_advance)\s*[:：]/i.test('|' + tag);
+    return /(?:^|[|｜,\s])(?:emotion|attitude|undress|nsfw|stage|place|tod|sleep|time_advance)\s*[:：]|^(?:undress:on|undress:off|nsfw:on|nsfw:off)$/i.test('|' + tag);
   }
 
   function attachSceneTags(state, dest) {
@@ -335,6 +335,12 @@
       body = body.slice(end + 1).replace(/^\s+/, '');
     }
     var ex = extractState(body);
+    /* Deteksi kata-kata buka baju langsung dari teks jika model lupa menyertakan tag */
+    if (dest.nsfw == null) {
+      if (/(lepas|buka)\s*(baju|pakaian|jaket|mantel)|脱い|脱ぐ|裸|undress/i.test(ex.text)) {
+        dest.nsfw = true;
+      }
+    }
     return {
       emotion: dest.emotion, attitude: dest.attitude, nsfw: dest.nsfw,
       text: ex.text, state: attachSceneTags(ex.state, dest)

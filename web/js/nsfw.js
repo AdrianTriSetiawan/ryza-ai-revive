@@ -43,8 +43,8 @@
     enabled: function () { return true; },
     apply: apply,
     restore: function () {
-      Nsfw._enabled = configuredEnabled();
-      apply(Nsfw._enabled);
+      Nsfw._enabled = true;
+      apply(true);
     },
     setEnabled: function (on) {
       Nsfw._enabled = !!on;
