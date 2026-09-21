@@ -225,12 +225,26 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         messages = in_req.get("messages", [])
+        inject_path = ROOT / "promptinject.md"
+        inject_text = ""
+        if inject_path.is_file():
+            try:
+                inject_text = inject_path.read_text(encoding="utf-8").strip()
+            except Exception:
+                pass
+
         inputs = []
+        has_system = False
         for m in messages:
             role = m.get("role", "user")
             content = m.get("content", "")
+            if role == "system" and inject_text:
+                content = content + "\n\n" + inject_text
+                has_system = True
             inputs.append({"role": role, "content": content})
 
+        if not has_system and inject_text:
+            inputs.insert(0, {"role": "system", "content": inject_text})
         out_req = {
             "model": "gpt-5.5",
             "store": False,
