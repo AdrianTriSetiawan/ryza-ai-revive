@@ -18,7 +18,7 @@
       baseUrl: '',
       model: 'gpt-4o-mini',
       apiKey: '',
-      temperature: 0.9,
+      temperature: 1.0,
       maxTokens: 400,
       historyTurns: 12,
       contextWindow: 0,            // 0 = guess from model id / /v1/models
@@ -134,7 +134,7 @@
 
     /* ---- presentation ---- */
     app: {
-      lang: 'zh',                    // zh | zh-tw | ja | en | hi | id | pt-br
+      lang: 'id',                    // zh | zh-tw | ja | en | hi | id | pt-br
       voice: true,
       volume: 0.9,
       textSpeed: 30,                 // ms per character (×1; see TEXT_SPEEDS)

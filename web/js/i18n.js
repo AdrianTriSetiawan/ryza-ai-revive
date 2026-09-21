@@ -1632,7 +1632,7 @@
   };
 
   var I18n = {
-    lang: 'zh',
+    lang: 'id',
     LANG_NAMES: LANG_NAMES,
     /* Derived, not a second list. Membership and order come from Langs.ALL minus
        'auto' (this picker chooses the UI language, which cannot be automatic),

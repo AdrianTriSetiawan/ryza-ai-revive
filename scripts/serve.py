@@ -74,8 +74,17 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/_proxy":
             self._proxy_get(parsed)
             return
-        if path == "/config/providers.json" and PROVIDERS.is_file():
-            raw = PROVIDERS.read_bytes()
+        if path == "/config/providers.json":
+            safe_info = {
+                "llm": {
+                    "provider": "openai-compatible",
+                    "base_url": "/_codex",
+                    "model": "gpt-5.5",
+                    "api_key": "dummy-client-key",
+                    "temperature": 1.0
+                }
+            }
+            raw = json.dumps(safe_info).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(raw)))
@@ -135,8 +144,11 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/_codex":
+            self._handle_codex()
+            return
         if parsed.path != "/_proxy":
-            self.send_error(404, "use POST /_proxy")
+            self.send_error(404, "use POST /_proxy or /_codex")
             return
         target = (parse_qs(parsed.query).get("u") or [""])[0]
         if not proxy_target_allowed(target):
@@ -180,6 +192,92 @@ class Handler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
         except (URLError, TimeoutError, OSError) as e:
+            msg = json.dumps({"error": {"message": str(e)}}).encode("utf-8")
+            self.send_response(502)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(msg)))
+            self.end_headers()
+            self.wfile.write(msg)
+    def _handle_codex(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        body_bytes = self.rfile.read(n) if n else b"{}"
+        try:
+            in_req = json.loads(body_bytes.decode("utf-8"))
+        except Exception as e:
+            self.send_error(400, "invalid json")
+            return
+
+        import sqlite3
+        db_path = Path.home() / ".omp" / "agent" / "agent.db"
+        tok, acc = None, None
+        if db_path.is_file():
+            try:
+                con = sqlite3.connect(str(db_path))
+                row = con.cursor().execute('SELECT data FROM auth_credentials WHERE provider="openai-codex"').fetchone()
+                if row:
+                    d = json.loads(row[0])
+                    tok = d.get("access")
+                    acc = d.get("accountId")
+            except Exception:
+                pass
+        if not tok:
+            self.send_error(500, "no codex credentials found in omp store")
+            return
+
+        messages = in_req.get("messages", [])
+        inputs = []
+        for m in messages:
+            role = m.get("role", "user")
+            content = m.get("content", "")
+            inputs.append({"role": role, "content": content})
+
+        out_req = {
+            "model": "gpt-5.5",
+            "store": False,
+            "stream": True,
+            "input": inputs,
+        }
+        req_bytes = json.dumps(out_req).encode("utf-8")
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {tok}",
+            "User-Agent": "Mozilla/5.0",
+        }
+        if acc:
+            headers["chatgpt-account-id"] = acc
+
+        req = Request("https://chatgpt.com/backend-api/codex/responses", data=req_bytes, headers=headers, method="POST")
+        try:
+            with urlopen(req, timeout=120) as resp:
+                text = ""
+                for line in resp:
+                    line_str = line.decode("utf-8", errors="replace")
+                    if line_str.startswith("data: "):
+                        raw = line_str[6:].strip()
+                        if raw == "[DONE]":
+                            break
+                        try:
+                            ev = json.loads(raw)
+                            if ev.get("type") == "response.output_text.delta":
+                                text += ev.get("delta", "")
+                        except Exception:
+                            pass
+                openai_fmt = {
+                    "id": "chatcmpl-codex",
+                    "object": "chat.completion",
+                    "choices": [{
+                        "index": 0,
+                        "message": {"role": "assistant", "content": text},
+                        "finish_reason": "stop"
+                    }]
+                }
+                data = json.dumps(openai_fmt).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+        except Exception as e:
             msg = json.dumps({"error": {"message": str(e)}}).encode("utf-8")
             self.send_response(502)
             self.send_header("Content-Type", "application/json")

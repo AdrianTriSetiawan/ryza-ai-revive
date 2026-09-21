@@ -1243,7 +1243,10 @@
       }
       var llm = Config.section('llm');
       if (!llm.apiKey) return Promise.resolve(text);
-      return request(localProxy(upstreamUrl(llm.baseUrl, '/chat/completions')), {
+      var reqUrl = (llm.baseUrl && llm.baseUrl.indexOf('/_codex') !== -1)
+        ? '/_codex'
+        : localProxy(upstreamUrl(llm.baseUrl, '/chat/completions'));
+      return request(reqUrl, {
         model: llm.model,
         messages: [
           { role: 'system', content: 'You are a translator for a Japanese anime game character (Ryza, cheerful young alchemist). Translate her line into ' + langName(toLang) + ', keeping the playful spoken tone, first-person feel and emotion. Output ONLY the translated line — no quotes, notes or tags.' },
@@ -1318,11 +1321,14 @@
       }
       var body = {
         model: llm.model, messages: pack(hist),
-        temperature: Number(llm.temperature) || 0.9,
+        temperature: llm.temperature != null ? Number(llm.temperature) : 1.0,
         max_tokens: Number(llm.maxTokens) || 400
       };
       attachThinking(body, llm, _modelMeta && _modelMeta.id === llm.model ? _modelMeta : null);
-      return request(localProxy(upstreamUrl(llm.baseUrl, '/chat/completions')),
+      var reqUrl = (llm.baseUrl && llm.baseUrl.indexOf('/_codex') !== -1)
+        ? '/_codex'
+        : localProxy(upstreamUrl(llm.baseUrl, '/chat/completions'));
+      return request(reqUrl,
                      body, llm.apiKey, undefined, epoch == null ? undefined : epoch).then(function (j) {
         /* Interrupted / superseded while the request was in flight: the reply
            must not reach the caller at all (no history push, no face change,
@@ -1337,7 +1343,10 @@
       opts = opts || {};
       var llm = Config.section('llm');
       if (!llm.apiKey) return Promise.reject(new Error('NO_KEY'));
-      return request(localProxy(upstreamUrl(llm.baseUrl, '/chat/completions')), {
+      var reqUrl = (llm.baseUrl && llm.baseUrl.indexOf('/_codex') !== -1)
+        ? '/_codex'
+        : localProxy(upstreamUrl(llm.baseUrl, '/chat/completions'));
+      return request(reqUrl, {
         model: llm.model,
         messages: [
           { role: 'system', content: String(system || '') },

@@ -63,7 +63,7 @@
         function (v) { Config.set('llm.apiKey', v); },
         { password: true, hint: T('settings.apiKey.hint') });
       App._field(w, T('settings.temp'), Config.section('llm').temperature,
-        function (v) { Config.set('llm.temperature', parseFloat(v) || 0.9); });
+        function (v) { var n = parseFloat(v); Config.set('llm.temperature', isNaN(n) ? 1.0 : n); });
       App._field(w, T('settings.maxTokens'), Config.section('llm').maxTokens,
         function (v) { Config.set('llm.maxTokens', Math.max(64, parseInt(v, 10) || 400)); });
       App._field(w, T('settings.historyTurns'), Config.section('llm').historyTurns,
