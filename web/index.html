@@ -122,12 +122,12 @@
 </main>
 
 <section id="view-welcome" class="view">
-  <div class="view-head"><h2 data-i18n="wm.title">欢迎任务</h2></div>
+  <div class="view-head"><button class="mini-btn view-back-btn" onclick="App.showView('talk')">←</button><h2 data-i18n="wm.title">欢迎任务</h2></div>
   <div id="welcome-body" class="form-wrap"></div>
 </section>
 
 <section id="view-world" class="view">
-  <div class="view-head"><h2 data-i18n="world.title">世界地图</h2>
+  <div class="view-head"><button class="mini-btn view-back-btn" onclick="App.showView('talk')">←</button><h2 data-i18n="world.title">世界地图</h2>
     <div class="head-actions">
       <button class="mini-btn" id="btn-world-mode">🗺 <span data-i18n="nav.world">Peta</span></button>
       <button class="mini-btn" id="btn-world-people">👥 <span data-i18n="world.people">Orang lokal</span></button>
@@ -145,30 +145,30 @@
 </section>
 
 <section id="view-quest" class="view">
-  <div class="view-head"><h2 data-i18n="quest.title">任务</h2>
+  <div class="view-head"><button class="mini-btn view-back-btn" onclick="App.showView('talk')">←</button><h2 data-i18n="quest.title">任务</h2>
     <button class="mini-btn" id="btn-quest-new" data-i18n="quest.auto">让莱莎想一个</button></div>
   <div id="quest-list" class="form-wrap"></div>
 </section>
 
 <section id="view-daily" class="view">
-  <div class="view-head"><h2 data-i18n="dl.title">每日登录</h2></div>
+  <div class="view-head"><button class="mini-btn view-back-btn" onclick="App.showView('talk')">←</button><h2 data-i18n="dl.title">每日登录</h2></div>
   <div id="daily-body" class="form-wrap"></div>
 </section>
 
 <section id="view-alarm" class="view">
-  <div class="view-head"><h2 data-i18n="alarm.title">闹钟</h2>
+  <div class="view-head"><button class="mini-btn view-back-btn" onclick="App.showView('talk')">←</button><h2 data-i18n="alarm.title">闹钟</h2>
     <button class="mini-btn" id="btn-alarm-new" data-i18n="alarm.new">+ Alarm Baru</button></div>
   <div id="alarm-list"></div>
 </section>
 
 <section id="view-chara" class="view">
-  <div class="view-head"><h2 data-i18n="chara.title">角色设定</h2>
+  <div class="view-head"><button class="mini-btn view-back-btn" onclick="App.showView('talk')">←</button><h2 data-i18n="chara.title">角色设定</h2>
     <button class="mini-btn" id="btn-chara-skin" data-i18n="nav.skin">服装</button></div>
   <div class="form-wrap" id="chara-form"></div>
 </section>
 
 <section id="view-skin" class="view">
-  <div class="view-head"><h2 data-i18n="skin.title">服装</h2>
+  <div class="view-head"><button class="mini-btn view-back-btn" onclick="App.showView('talk')">←</button><h2 data-i18n="skin.title">服装</h2>
     <div class="head-actions">
       <button class="mini-btn" id="btn-crf-zip" title="Impor kostum ZIP">Impor Kostum</button>
       <button class="mini-btn" id="btn-crf-remove" title="Hapus kostum terakhir">Hapus Impor</button>
@@ -180,7 +180,7 @@
 </section>
 
 <section id="view-memory" class="view">
-  <div class="view-head"><h2 data-i18n="memory.title">回忆</h2>
+  <div class="view-head"><button class="mini-btn view-back-btn" onclick="App.showView('talk')">←</button><h2 data-i18n="memory.title">回忆</h2>
     <div class="head-actions">
       <button class="mini-btn" id="btn-memory-add" data-i18n="memory.add">添加</button>
       <button class="mini-btn" id="btn-memory-flush" data-i18n="memory.flush">立即总结</button>
@@ -191,8 +191,13 @@
 </section>
 
 <section id="view-settings" class="view">
-  <div class="view-head"><h2 data-i18n="settings.title">设置</h2>
-    <button class="mini-btn" id="btn-settings-reset" data-i18n="settings.reset">Reset Default</button></div>
+  <div class="view-head">
+    <button class="mini-btn" id="btn-settings-back" title="Kembali ke obrolan">← Kembali</button>
+    <h2 data-i18n="settings.title">Settings</h2>
+    <div class="head-actions">
+      <button class="mini-btn" id="btn-settings-reset" data-i18n="settings.reset">Reset Default</button>
+    </div>
+  </div>
   <div class="form-wrap" id="settings-form"></div>
 </section>
 
@@ -353,7 +358,7 @@
 <script src="js/shell.js?v=1.2.21"></script>
 <script src="js/back.js?v=1.2.21"></script>
 <script src="js/kbd.js?v=1.2.21"></script>
-<script src="js/settings.js?v=1.2.21"></script>
-<script src="js/app.js?v=1.2.21"></script>
+<script src="js/settings.js?v=1.2.21-v3"></script>
+<script src="js/app.js?v=1.2.21-v3"></script>
 </body>
 </html>

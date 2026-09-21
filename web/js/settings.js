@@ -28,6 +28,10 @@
     buildSettings: function () {
       var w = document.getElementById('settings-form');
       w.innerHTML = '';
+      var backBtn = document.getElementById('btn-settings-back');
+      if (backBtn) {
+        backBtn.onclick = function () { App.showView('talk'); };
+      }
       var T = function (k) { return I18n.t(k); };
 
       App._title(w, T('settings.llm'));
@@ -517,6 +521,16 @@
       row3.className = 'btn-row';
       row3.appendChild(bErase);
       w.appendChild(row3);
+
+      var bBackBottom = document.createElement('button');
+      bBackBottom.className = 'btn primary';
+      bBackBottom.textContent = '← Kembali ke Obrolan';
+      bBackBottom.onclick = function () { App.showView('talk'); };
+      var rowBack = document.createElement('div');
+      rowBack.className = 'btn-row';
+      rowBack.style.marginTop = '16px';
+      rowBack.appendChild(bBackBottom);
+      w.appendChild(rowBack);
     },
 
     _testLlm: function () {
@@ -601,13 +615,13 @@
       var row = document.createElement('div');
       row.className = 'btn-row';
       var b = document.createElement('button');
-      b.className = 'btn primary'; b.textContent = '保存并回到对话';
+      b.className = 'btn primary'; b.textContent = 'Simpan & Kembali ke Obrolan';
       b.onclick = function () { App.toast(I18n.t('toast.saved')); App.showView('talk'); };
       row.appendChild(b);
       var b2 = document.createElement('button');
-      b2.className = 'btn danger'; b2.textContent = '清空对话记忆';
+      b2.className = 'btn danger'; b2.textContent = 'Hapus Riwayat Obrolan';
       b2.onclick = function () {
-        if (confirm('清空当前对话历史？')) { App.history = []; App.toast('已清空'); }
+        if (confirm('Hapus riwayat obrolan saat ini?')) { App.history = []; App.toast('Riwayat telah dihapus'); }
       };
       row.appendChild(b2);
       w.appendChild(row);
