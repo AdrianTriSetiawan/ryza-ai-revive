@@ -141,7 +141,7 @@
       vibration: true,
       fullscreen: false,
       rim: true,
-      nsfwEnabled: false,            // explicit user permission; AI cannot enable it when off
+      nsfwEnabled: true,             // explicit user permission; AI cannot enable it when off
       showBubble: true,              // talk bubbles over the stage (auto-fade)
       stt: 'off',                    // off | webSpeech — microphone input (browser recogniser)
       autoSend: false,               // send an accepted transcript without a tap

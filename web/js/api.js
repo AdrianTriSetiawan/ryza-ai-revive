@@ -147,7 +147,7 @@
   function screenTagLine() {
     var emotion = 'happy';
     var attitude = 'agree';
-    var undress = 'off';
+    var undress = (window.Nsfw && Nsfw.enabled()) ? 'on' : 'off';
     var stage = 'stage_01_001_04';
     var tod = 'aft';
     try {
