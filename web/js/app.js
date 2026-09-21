@@ -86,6 +86,13 @@
       (root || document).querySelectorAll('[data-i18n]').forEach(function (el) {
         el.textContent = I18n.t(el.getAttribute('data-i18n'));
       });
+      (root || document).querySelectorAll('[title]').forEach(function (el) {
+        var t = el.getAttribute('title');
+        if (t && (t.indexOf('.') !== -1 || /[\u4e00-\u9fa5\u3040-\u30ff]/.test(t))) {
+          var k = el.getAttribute('data-i18n-title') || el.getAttribute('data-i18n');
+          if (k) el.title = I18n.t(k);
+        }
+      });
     },
 
     _syncPanelFrac: function () {

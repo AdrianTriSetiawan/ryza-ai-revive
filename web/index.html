@@ -25,12 +25,12 @@
      bottom log panel, and the side menu (ショップ…ワールドマップにもどる)
      slides in on the right. -->
 <header id="topbar">
-  <button class="icon-btn plain" id="btn-menu" title="メニュー"><img src="assets/icons/drawer.svg" alt=""></button>
+  <button class="icon-btn plain" id="btn-menu" data-i18n-title="nav.settings" title="Menu"><img src="assets/icons/drawer.svg" alt=""></button>
   <div class="spacer"></div>
-  <button type="button" id="btn-voice" class="voice-pill" title="音声 / テキスト">
-    <canvas id="lottie-voice" width="30" height="30"></canvas><img id="voice-text-ico" class="hidden" src="assets/icons/mode_text.svg" alt=""><span id="voice-pill-label">ボイス</span>
+  <button type="button" id="btn-voice" class="voice-pill" data-i18n-title="voice.on" title="Suara / Teks">
+    <canvas id="lottie-voice" width="30" height="30"></canvas><img id="voice-text-ico" class="hidden" src="assets/icons/mode_text.svg" alt=""><span id="voice-pill-label">Suara</span>
   </button>
-  <button class="icon-btn" id="btn-expand" title="メニュー">»</button>
+  <button class="icon-btn" id="btn-expand" data-i18n-title="nav.settings" title="Menu">»</button>
 </header>
 
 <div id="side-menu">
@@ -71,36 +71,34 @@
 
 <main id="view-talk" class="view active">
   <div id="hud-cluster">
-    <button type="button" class="apple-row" id="hud-stamina" title="スタミナ"></button>
+    <button type="button" class="apple-row" id="hud-stamina" data-i18n-title="stamina" title="Stamina"></button>
     <div class="hud-line">
-      <button type="button" class="money-pill" id="hud-money" title="所持金"><img src="assets/icons/hud_coin.svg" alt=""><b id="hud-money-n">0</b></button>
-      <button type="button" class="lv-pill" id="hud-level" title="レベル">Lv1</button>
+      <button type="button" class="money-pill" id="hud-money" data-i18n-title="st.title" title="Koin"><img src="assets/icons/hud_coin.svg" alt=""><b id="hud-money-n">0</b></button>
+      <button type="button" class="lv-pill" id="hud-level" data-i18n-title="st.level" title="Level">Lv1</button>
     </div>
   </div>
   <div id="quick-btns">
     <!-- 收起键：＋－挡视线时收起整列（报告原文「没法缩回去」）。收起的只留
          这一个钮，位置不动，所以能再展开。状态存 app.quickCollapsed。 -->
-    <button type="button" class="round-btn quick-toggle" id="btn-quick-toggle" title="ボタンを隠す">✕</button>
-    <!-- 玩家缩放：只放大（下界 1.0，见 avatar.js 的 PLAYER_ZOOM_MIN 说明）。
-         三个键排成一行：走查实测竖排 9 个圆钮会盖住立绘的一大条。 -->
+    <button type="button" class="round-btn quick-toggle" id="btn-quick-toggle" data-i18n-title="quick.hide" title="Sembunyikan tombol">✕</button>
     <div class="zoom-row">
-      <button type="button" class="round-btn" id="btn-zoom-in" title="拡大">＋</button>
-      <button type="button" class="round-btn" id="btn-zoom-out" title="縮小">－</button>
-      <button type="button" class="round-btn" id="btn-zoom-reset" title="標準">◎</button>
+      <button type="button" class="round-btn" id="btn-zoom-in" title="Perbesar">＋</button>
+      <button type="button" class="round-btn" id="btn-zoom-out" title="Perkecil">－</button>
+      <button type="button" class="round-btn" id="btn-zoom-reset" title="Standar">◎</button>
     </div>
-    <button type="button" class="round-btn hidden" id="btn-posture" title="座る/立つ">座</button>
-    <button type="button" class="round-btn" id="btn-replay" title="もう一度聞く">▶</button>
-    <button type="button" class="round-btn" id="btn-voicefav" title="お気に入り">★</button>
-    <button type="button" class="round-btn" id="btn-log-toggle" title="会話履歴"><img src="assets/icons/arrow_up.svg" alt=""></button>
-    <button type="button" class="round-btn" id="btn-quest-sheet" title="クエスト"><img src="assets/icons/quest.svg" alt=""></button>
-    <button type="button" class="round-btn" id="btn-bag" title="道具"><img src="assets/icons/bag.svg" alt=""></button>
+    <button type="button" class="round-btn hidden" id="btn-posture" title="Duduk / Berdiri">座</button>
+    <button type="button" class="round-btn" id="btn-replay" data-i18n-title="alarm.preview" title="Dengarkan lagi">▶</button>
+    <button type="button" class="round-btn" id="btn-voicefav" title="Favorit">★</button>
+    <button type="button" class="round-btn" id="btn-log-toggle" data-i18n-title="memory.log" title="Riwayat Percakapan"><img src="assets/icons/arrow_up.svg" alt=""></button>
+    <button type="button" class="round-btn" id="btn-quest-sheet" data-i18n-title="quest.title" title="Misi"><img src="assets/icons/quest.svg" alt=""></button>
+    <button type="button" class="round-btn" id="btn-bag" data-i18n-title="nav.bag" title="Tas"><img src="assets/icons/bag.svg" alt=""></button>
   </div>
   <div id="log-panel">
     <div id="log-head">
       <img id="log-avatar" src="assets/images/chara_icons/ryza.png" alt="">
       <div id="log-ident">
-        <div id="log-name">ライザ</div>
-        <div id="log-sub" title="対話モード">自由に雑談を楽しむモード</div>
+        <div id="log-name">Ryza</div>
+        <div id="log-sub" title="Mode Percakapan">Mode obrolan santai</div>
       </div>
     </div>
     <div id="log-body">
@@ -112,13 +110,13 @@
       <button class="mini-btn" id="btn-retry" data-i18n="talk.retry">重试</button>
     </div>
     <div id="input-bar">
-      <button type="button" class="round-btn speed-btn" id="btn-speed" title="テキスト速度">×1</button>
+      <button type="button" class="round-btn speed-btn" id="btn-speed" title="Kecepatan teks">×1</button>
       <div class="input-pill">
-        <input id="input" type="text" placeholder="和莱莎说点什么…" autocomplete="off">
-        <button type="button" id="btn-mic" class="mic-btn hidden" data-i18n-title="mic.start" title="语音输入"></button>
-        <button type="button" id="btn-newtalk" title="新しい会話"><img src="assets/icons/asterisk.svg" alt=""></button>
+        <input id="input" type="text" placeholder="Bicara sesuatu dengan Ryza…" autocomplete="off">
+        <button type="button" id="btn-mic" class="mic-btn hidden" data-i18n-title="mic.start" title="Input suara"></button>
+        <button type="button" id="btn-newtalk" data-i18n-title="nav.newTalk" title="Percakapan baru"><img src="assets/icons/asterisk.svg" alt=""></button>
       </div>
-      <button type="button" id="btn-send" class="round-btn send-btn" title="送信"><img src="assets/icons/send.svg" alt="send"></button>
+      <button type="button" id="btn-send" class="round-btn send-btn" data-i18n-title="form.ok" title="Kirim"><img src="assets/icons/send.svg" alt="send"></button>
     </div>
   </div>
 </main>
@@ -131,10 +129,10 @@
 <section id="view-world" class="view">
   <div class="view-head"><h2 data-i18n="world.title">世界地图</h2>
     <div class="head-actions">
-      <button class="mini-btn" id="btn-world-mode">🗺 <span>地图</span></button>
-      <button class="mini-btn" id="btn-world-people">👥 <span data-i18n="world.people">此地の人</span></button>
+      <button class="mini-btn" id="btn-world-mode">🗺 <span data-i18n="nav.world">Peta</span></button>
+      <button class="mini-btn" id="btn-world-people">👥 <span data-i18n="world.people">Orang lokal</span></button>
       <select id="world-area"></select>
-      <button class="mini-btn" id="btn-tod">🌤 <span id="btn-tod-label">时段</span></button>
+      <button class="mini-btn" id="btn-tod">🌤 <span id="btn-tod-label">Waktu</span></button>
     </div>
   </div>
   <div id="world-body">
@@ -159,7 +157,7 @@
 
 <section id="view-alarm" class="view">
   <div class="view-head"><h2 data-i18n="alarm.title">闹钟</h2>
-    <button class="mini-btn" id="btn-alarm-new">+ 新闹钟</button></div>
+    <button class="mini-btn" id="btn-alarm-new" data-i18n="alarm.new">+ Alarm Baru</button></div>
   <div id="alarm-list"></div>
 </section>
 
@@ -172,8 +170,8 @@
 <section id="view-skin" class="view">
   <div class="view-head"><h2 data-i18n="skin.title">服装</h2>
     <div class="head-actions">
-      <button class="mini-btn" id="btn-crf-zip" title="导入服装 ZIP（atlas/png/skel/gesture 四件）">导入服装</button>
-      <button class="mini-btn" id="btn-crf-remove" title="移除最后导入的服装">移除导入</button>
+      <button class="mini-btn" id="btn-crf-zip" title="Impor kostum ZIP">Impor Kostum</button>
+      <button class="mini-btn" id="btn-crf-remove" title="Hapus kostum terakhir">Hapus Impor</button>
     </div>
   </div>
   <div id="skin-posture-hint" class="hint skin-hint"></div>
@@ -194,7 +192,7 @@
 
 <section id="view-settings" class="view">
   <div class="view-head"><h2 data-i18n="settings.title">设置</h2>
-    <button class="mini-btn" id="btn-settings-reset">恢复默认</button></div>
+    <button class="mini-btn" id="btn-settings-reset" data-i18n="settings.reset">Reset Default</button></div>
   <div class="form-wrap" id="settings-form"></div>
 </section>
 
@@ -266,7 +264,7 @@
 
 <div id="overlay-title" class="overlay">
   <div class="title-sparkle"><canvas id="lottie-fire" width="96" height="96"></canvas></div>
-  <h1>ライザと話す</h1>
+  <h1>Bicara dengan Ryza</h1>
   <p class="title-sub">Atelier Ryza</p>
   <button type="button" class="btn primary" id="btn-title-start" data-i18n="title.start" disabled>…</button>
 </div>
@@ -278,8 +276,8 @@
     <p id="onb-sub" class="onb-sub"></p>
     <div id="onb-body"></div>
     <div class="btn-row">
-      <button type="button" class="btn" id="onb-skip">跳过</button>
-      <button type="button" class="btn primary" id="onb-next">下一步</button>
+      <button type="button" class="btn" id="onb-skip" data-i18n="onb.skip">Lewati</button>
+      <button type="button" class="btn primary" id="onb-next" data-i18n="onb.next">Lanjut</button>
     </div>
   </div>
 </div>
@@ -330,7 +328,7 @@
 <script src="js/util.js?v=1.2.21"></script>
 <script src="js/config.js?v=1.2.21"></script>
 <script src="js/i18n.js?v=1.2.21"></script>
-<script src="js/api.js?v=1.2.21-inject"></script>
+<script src="js/app.js?v=1.2.21-idfix"></script>
 <script src="js/providers.js?v=1.2.21"></script>
 <script src="js/turn.js?v=1.2.21"></script>
 <script src="js/echo.js?v=1.2.21"></script>
